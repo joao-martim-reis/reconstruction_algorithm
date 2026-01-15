@@ -37,10 +37,6 @@ def load_images(tiff_folder):
     first_img = tiff.imread(os.path.join(tiff_folder, file_list[0]))
     height, width = first_img.shape 
     print(f"Dimensions: {height} (H) x {width} (W) | {num_files} projections.")
-    try:
-        print(f"    First image dtype: {first_img.dtype}, min={first_img.min()}, max={first_img.max()}")
-    except Exception:
-        print(f"    First image dtype: {first_img.dtype}")
     
 
     projections = np.zeros((height, width, num_files), dtype=first_img.dtype)

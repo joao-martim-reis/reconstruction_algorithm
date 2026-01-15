@@ -208,6 +208,16 @@ def normalize_projections(projections_raw, I0_override=None):
 
 
 def setup_geometry(img_shape, pixel_size, DSD, DSO, shift_pixels, total_angle, shift_sign, voxel_ratio=1.0):
+    """
+    Args:
+        img_shape: (height, width, n_angles)
+        pixel_size: Detector pixel size in mm
+        DSD: Distance Source to Detector in mm
+        DSO: Distance Source to Object in mm
+        shift_pixels: Detector shift in pixels (for center correction)
+        voxel_ratio: Multiplier for voxel size (1.0 = Nyquist optimal, <1 = higher res, >1 = lower res)
+    """
+    
     print(f"--> Setting up geometry with shift: {shift_pixels:.2f} px")
     
     height, width, n_angles = img_shape # img_shape = (Height, Width, Angles)
@@ -389,7 +399,7 @@ if __name__ == "__main__":
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Image_reconstruction\reconstructed_volumes_Nift'
     }
     
-    
+
     folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\marta_caixa_SiPM'
