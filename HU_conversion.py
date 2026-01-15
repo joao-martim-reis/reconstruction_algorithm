@@ -7,6 +7,8 @@ def HU_conversion(volume, water_val, air_val):
     Automatically generates the calibration line graph.
 
     """
+
+    "so para ver se esta a dar"
     
     # 1. Define the reference physical values
     HU_water = 0.0
