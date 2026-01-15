@@ -11,7 +11,7 @@ import nibabel as nib
 from matplotlib.widgets import Slider, Button
 from datetime import datetime
 
-
+#esta a funcionar
 
 from data_processing_3D_2 import (
     load_images, 
