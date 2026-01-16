@@ -125,45 +125,6 @@ def get_I0_from_roi(sino_raw, roi_background):
     return mean_I0
 
 
-def show_results(sino_raw, sino_final_norm, shift_val):
-    """
-    Visualização simplificada: sinograma raw e normalizado.
-    """
-    print("--> [5/5] Showing final result...")
 
-
-    centro_geo = sino_raw.shape[0] / 2.0
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6)) # Two side-by-side plots, size adjusted to 14:6 aspect ratio
-
-    # Set x-axis ticks every 30 degrees
-    n_proj = sino_raw.shape[1]
-    ticks_deg = np.arange(0, 361, 30)
-    tick_positions = [int(d * n_proj / 360.0) for d in ticks_deg]
-    tick_labels = [f"{int(d)}°" for d in ticks_deg]
-
-    # PLOT 1: RAW
-    ax1 = axes[0]
-    ax1.imshow(sino_raw, cmap='gray', aspect='auto', origin='upper')
-    ax1.set_title("1. RAW Sinogram")
-    ax1.axhline(y=centro_geo, color='red', linestyle='--', label='Geo Center')
-    ax1.legend()
-    ax1.set_ylabel("Detector (px)")
-    ax1.set_xlabel("θ (degree)")
-    ax1.set_xticks(tick_positions)
-    ax1.set_xticklabels(tick_labels)
-
-    # PLOT 2: NORMALIZED
-    ax2 = axes[1]
-    ax2.imshow(sino_final_norm, cmap='gray', aspect='auto', origin='upper')
-    ax2.set_title("2. Normalized Sinogram")
-    ax2.axhline(y=centro_geo, color='red', linestyle='--', label='Geo Center')
-    ax2.set_ylabel("Detector (px)")
-    ax2.set_xlabel("θ (degree)")
-    ax2.set_xticks(tick_positions)
-    ax2.set_xticklabels(tick_labels)
-    ax2.legend()
-    
-    plt.tight_layout()
-    plt.show()
 
 

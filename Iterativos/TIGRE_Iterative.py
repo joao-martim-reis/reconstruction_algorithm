@@ -19,12 +19,7 @@ from data_processing_3D_2 import (
     generate_collapsed_sinogram,
     selecionar_roi_I0,
     get_I0_from_roi,
-    show_results,
-)
 
-def print_volume_info(volume, geo=None):
-    """Prints detailed information about the reconstructed volume."""
-    print("\n" + "="*60)
     print("RECONSTRUCTED VOLUME INFORMATION")
     print(f"Dtype: {volume.dtype}")
     print(f"Dimensions: {volume.shape}")
@@ -430,11 +425,9 @@ def main(tiff_folder, configurations, output_folder=None):
     
     # 5. Normalize projections
     projections_norm = normalize_projections(projections, I0_override=mean_I0)
-    sino_norm_preview = generate_collapsed_sinogram(projections_norm)
-    show_results(sino_raw, sino_norm_preview, shift_val)
     
     # Memory cleanup: Free heavy variables before reconstruction
-    del projections, sino_raw, sino_norm_preview
+    del projections
     gc.collect()
 
     # 6. Setup Geometry

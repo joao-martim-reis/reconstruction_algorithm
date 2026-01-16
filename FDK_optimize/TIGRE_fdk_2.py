@@ -18,7 +18,6 @@ from data_processing_3D_2 import (
     generate_collapsed_sinogram,
     selecionar_roi_I0,
     get_I0_from_roi,
-    show_results,
 )
 
 # Import HU conversion function
@@ -199,22 +198,18 @@ def downsample_block_mean_pad(proj, f):
     This anti-aliased downsampling averages f×f pixel blocks instead of picking one pixel.
     Reduces aliasing artifacts and preserves signal better than stride sampling.
 
-    Returns:
-        downsampled array with shape (ceil(H/f), ceil(W/f), A)
-        
-    IMPORTANT - RESOLUTION & VOXEL SIZE:
-    =====================================
     • Detector pixel size increases by factor f: new_pixel_size = original_pixel_size × f
     • Reconstructed voxel size also scales by f (via Nyquist: voxel_size = pixel_size / magnification)
     • Spatial resolution in reconstructed volume DECREASES by factor f
     • This is a trade-off: lower resolution for reduced memory (~f² reduction) and faster reconstruction
     """
+
     H, W, A = proj.shape
     # compute padding so H and W become divisible by f
-    pad_h = (-H) % f
-    pad_w = (-W) % f
+    pad_h = (-H) % f # amount of padding (pixels) needed in height
+    pad_w = (-W) % f # amount of padding (pixels) needed in width
     if pad_h or pad_w:
-        proj_p = np.pad(proj, ((0, pad_h), (0, pad_w), (0, 0)), mode='edge')
+        proj_p = np.pad(proj, ((0, pad_h), (0, pad_w), (0, 0)), mode='edge') #np.pad is used to pad arrays which means adding values to the edges of an array
     else:
         proj_p = proj
     
@@ -322,10 +317,8 @@ def main(tiff_folder, configurations, output_folder=None):
 
     # 5. Normalize projections
     projections_norm = normalize_projections(projections, I0_override=mean_I0)
-    sino_norm_preview = generate_collapsed_sinogram(projections_norm)
-    show_results(sino_raw, sino_norm_preview, shift_val)
     
-    del projections, sino_raw, sino_norm_preview #del is used to free memory
+    del projections #del is used to free memory
     gc.collect()
 
     # 6. Geometry and Reconstruction
@@ -389,7 +382,7 @@ if __name__ == "__main__":
         'filter_type': 'hann',
         
         # VOXEL SIZE CONTROL
-        'voxel_ratio': 1.0,
+        'voxel_ratio': 4.0,
         # voxel_ratio multiplies the Nyquist voxel size (pixel_size / magnification)
         # • voxel_ratio = 1.0: Optimal resolution matching detector pixels (RECOMMENDED)
 
