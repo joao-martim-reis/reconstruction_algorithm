@@ -178,6 +178,45 @@ def normalize_projections(projections_raw, I0_override=None):
     return projections_norm
 
 
+def downsample_block_mean_pad(proj, f):
+    """Downsample projections by factor f using block-average with edge padding.
+    
+    This anti-aliased downsampling averages f×f pixel blocks instead of picking one pixel.
+    Reduces aliasing artifacts and preserves signal better than stride sampling.
+    
+    Args:
+        proj: numpy array with shape (H, W, A) - projection images
+        f: integer downsampling factor (e.g., 2, 4, 8)
+        
+    Returns:
+        downsampled array with shape (ceil(H/f), ceil(W/f), A)
+        
+    IMPORTANT - RESOLUTION & VOXEL SIZE:
+    =====================================
+    • Detector pixel size increases by factor f: new_pixel_size = original_pixel_size × f
+    • Reconstructed voxel size also scales by f (via Nyquist: voxel_size = pixel_size / magnification)
+    • Spatial resolution in reconstructed volume DECREASES by factor f
+    • This is a trade-off: lower resolution for reduced memory (~f² reduction) and faster reconstruction
+    • You control the downsampling factor via configurations['downsample'] - adjust based on your needs:
+        ◦ f=1: Full resolution (no downsampling) - highest detail, most memory
+        ◦ f=2: Half resolution - good balance for most cases
+        ◦ f=4: Quarter resolution - fast previews, less memory
+        ◦ f=8+: Very coarse - quick tests only
+    """
+    H, W, A = proj.shape
+    # compute padding so H and W become divisible by f
+    pad_h = (-H) % f
+    pad_w = (-W) % f
+    if pad_h or pad_w:
+        proj_p = np.pad(proj, ((0, pad_h), (0, pad_w), (0, 0)), mode='edge')
+    else:
+        proj_p = proj
+    
+    Hc, Wc = proj_p.shape[:2]
+    # reshape to blocks and average over the block axes (anti-aliasing)
+    return proj_p.reshape(Hc//f, f, Wc//f, f, A).mean(axis=(1, 3))
+
+
 def setup_geometry(img_shape, pixel_size, DSD, DSO, shift_pixels, total_angle, shift_sign, voxel_ratio=1.0):
     """
     Setup TIGRE geometry for cone-beam CT reconstruction.
@@ -368,15 +407,18 @@ def main(tiff_folder, configurations, output_folder=None):
     # 1. Load images
     projections = load_images(tiff_folder)
 
-    # 2. Downsample
+    # 2. Downsample (anti-aliased block-average to reduce memory and computation)
+    # You control the downsampling factor f via configurations['downsample']
+    # Higher f = lower resolution but faster & less memory. Adjust based on your needs.
     if configurations['downsample'] > 1:
-        f = configurations['downsample']
-        projections = projections[::f, ::f, :]
-        pixel_size = configurations['pixel_size'] * f
+        f = configurations['downsample']  # downsampling factor from config
+        # Use block-average instead of stride sampling to avoid aliasing artifacts
+        projections = downsample_block_mean_pad(projections, f).astype(np.float32)
+        pixel_size = configurations['pixel_size'] * f  # effective pixel size increases by f
     else:
         pixel_size = configurations['pixel_size']
 
-    # 3. Get calibrated shift (adjusted for downsample)
+    # 3. Get calibrated shift (adjusted for downsampling)
     calibrated_shift_px = configurations['calibrated_shift_px']
     shift_val = calibrated_shift_px / configurations['downsample']
     print(f"--> Using calibrated shift: {calibrated_shift_px:.2f} px (original) -> {shift_val:.2f} px (after downsample {configurations['downsample']}x)")
