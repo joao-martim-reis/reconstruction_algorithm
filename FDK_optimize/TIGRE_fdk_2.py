@@ -426,4 +426,3 @@ if __name__ == "__main__":
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\peixe_joao'
 
     vol = main(folder, CONFIG, output_folder=CONFIG.get('output_folder_NiFT'))
-

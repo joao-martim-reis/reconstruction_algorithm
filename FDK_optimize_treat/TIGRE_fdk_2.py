@@ -25,6 +25,13 @@ from data_processing_3D_2 import (
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from HU_conversion import HU_conversion
 
+# Import napari filtering module
+from napari_filters import (
+    interactive_filter_viewer,
+    view_volume_with_filters,
+    get_filter_recommendations
+)
+
 
 def print_volume_info(volume, geo=None):
 
@@ -47,22 +54,13 @@ def print_volume_info(volume, geo=None):
 def export_volume_to_nii(volume, geo, source_folder, base_output=None):
     """
     Exports the reconstructed volume to NIfTI format (.nii).
-    Creates a unique subfolder for each reconstruction inside base_output.
-    
-    Args:
-        volume: Reconstructed volume array
-        geo: TIGRE geometry object
-        source_folder: Path to source data folder
-        base_output: Custom output folder path. If None, uses 'reconstructed_volumes' in project root
-    
-    IMPORTANT - VALUE PRESERVATION FOR ANALYSIS:
-    ================================================
+
     • Attenuation coefficients (μ values) are stored in FLOAT32 format
     • NO scaling, normalization, or clipping is applied to the data
     • Raw FDK algorithm values are preserved EXACTLY as they are
     • Contrast/brightness adjustments in ImageJ, Napari, or 3D Slicer are ONLY 
       for visualization - the numeric values in the file NEVER change
-    ================================================
+
 
     """
     # Use default folder if none specified
@@ -124,17 +122,10 @@ def export_volume_to_nii(volume, geo, source_folder, base_output=None):
     metadata_file = os.path.join(output_folder, "metadata.txt")
     with open(metadata_file, 'w') as f:
         f.write(f"Volume Reconstruction Metadata\n")
-        f.write(f"Generated: {timestamp}\n")
-        f.write(f"Source Dataset: {dataset_name}\n")
-        f.write(f"Source Path: {source_folder}\n\n")
         f.write(f"Volume Information (exported to NIfTI):\n")
         f.write(f"  Exported shape (X, Y, Z): {volume_export.shape}\n")
         f.write(f"  Original shape (TIGRE): {volume.shape} (Z, Y, X)\n")
         f.write(f"  Data type: {volume_export.dtype}\n")
-        f.write(f"  Min: {np.min(volume_export):.6f}\n")
-        f.write(f"  Max: {np.max(volume_export):.6f}\n")
-        f.write(f"  Mean: {np.mean(volume_export):.6f}\n")
-        f.write(f"  Std: {np.std(volume_export):.6f}\n")
         f.write(f"  Total size (bytes): {volume_export.nbytes}\n\n")
         f.write(f"  Geometry Information:\n")
         f.write(f"  Voxel size (mm): {geo.dVoxel}\n")
@@ -205,6 +196,32 @@ def normalize_projections(projections_raw, I0_override=None):
     projections_norm = -np.log(ratio)
     projections_norm[projections_norm < 0] = 0
     return projections_norm
+
+
+def downsample_block_mean_pad(proj, f):
+    """Downsample projections by factor f using block-average with edge padding.
+    
+    This anti-aliased downsampling averages f×f pixel blocks instead of picking one pixel.
+    Reduces aliasing artifacts and preserves signal better than stride sampling.
+    
+    • Detector pixel size increases by factor f: new_pixel_size = original_pixel_size × f
+    • Reconstructed voxel size also scales by f (via Nyquist: voxel_size = pixel_size / magnification)
+    • Spatial resolution in reconstructed volume DECREASES by factor f
+    • This is a trade-off: lower resolution for reduced memory (~f² reduction) and faster reconstruction
+
+    """
+    H, W, A = proj.shape
+    # compute padding so H and W become divisible by f
+    pad_h = (-H) % f # amount of padding (pixels) needed in height
+    pad_w = (-W) % f # amount of padding (pixels) needed in width
+    if pad_h or pad_w:
+        proj_p = np.pad(proj, ((0, pad_h), (0, pad_w), (0, 0)), mode='edge')
+    else:
+        proj_p = proj
+    
+    Hc, Wc = proj_p.shape[:2]
+    # reshape to blocks and average over the block axes (anti-aliasing)
+    return proj_p.reshape(Hc//f, f, Wc//f, f, A).mean(axis=(1, 3))
 
 
 def setup_geometry(img_shape, pixel_size, DSD, DSO, shift_pixels, total_angle, shift_sign, voxel_ratio=1.0):
@@ -285,17 +302,20 @@ def main(tiff_folder, configurations, output_folder=None):
     # 1. Load
     projections = load_images(tiff_folder)
 
-    # 2. Downsample
+    # 2. Downsample (anti-aliased block-average to reduce memory and computation)
+    # You control the downsampling factor f via configurations['downsample']
+    # Higher f = lower resolution but faster & less memory. Adjust based on your needs.
     if configurations['downsample'] > 1:
-        f = configurations['downsample'] # downsample factor, the configuartions is used to get the value of downsample
-        projections = projections[::f, ::f, :]
-        pixel_size = configurations['pixel_size'] * f
+        f = configurations['downsample']  # downsampling factor from config
+        # Use block-average instead of stride sampling to avoid aliasing artifacts
+        projections = downsample_block_mean_pad(projections, f).astype(np.float32)
+        pixel_size = configurations['pixel_size'] * f  # effective pixel size increases by f
     else:
         pixel_size = configurations['pixel_size']
 
-    # 3. Get calibrated shift (adjusted for downsample)
+    # 3. Get calibrated shift (adjusted for downsampling)
     # The calibrated shift was measured at original resolution (downsample=1)
-    # We divide by the current downsample factor to get the correct pixel shift
+    # We divide by the current downsampling factor to get the correct pixel shift
     calibrated_shift_px = configurations['calibrated_shift_px']
     shift_val = calibrated_shift_px / configurations['downsample']
     print(f"--> Using calibrated shift: {calibrated_shift_px:.2f} px (original) -> {shift_val:.2f} px (after downsample {configurations['downsample']}x)")
@@ -332,17 +352,30 @@ def main(tiff_folder, configurations, output_folder=None):
     # Open Napari to visualize the volume 
     print("--> Opening Napari...")
     print(f"--> Volume shape: {volume.shape}, ndim={getattr(volume, 'ndim', 'unknown')}")
-    viewer = napari.Viewer()
-
-
-    ndim = volume.ndim 
-    if ndim == 2:
-        viewer.add_image(volume, scale=(geo.dVoxel[1], geo.dVoxel[2]))
-    elif ndim == 3:
-        viewer.add_image(volume, scale=(geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]))
+    
+    # Voxel scale for napari
+    voxel_scale = (geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]) if volume.ndim == 3 else (geo.dVoxel[1], geo.dVoxel[2])
+    
+    # Ask if user wants interactive filtering
+    filter_choice = input("\nDo you want to use INTERACTIVE filtering with sliders? (y/n): ").strip().lower()
+    
+    if filter_choice == 'y':
+        # Show recommendations
+        print("\n" + "="*60)
+        print("  ANALYZING VOLUME...")
+        print("="*60)
+        recommendations = get_filter_recommendations(volume)
+        
+        rec = recommendations['primary']
+        print(f"\n💡 RECOMMENDATION: '{rec['name']}'")
+        print(f"   Reason: {rec['reason']}")
+        print(f"\n   You can test all filters with the sliders in napari!")
+        
+        # Open interactive viewer with sliders
+        viewer = interactive_filter_viewer(volume, name="CT Volume", scale=voxel_scale, nii_filepath=nii_filepath)
     else:
-        # Fallback: add without explicit scale (napari will guess)
-        viewer.add_image(volume)
+        # Just view volume without filtering
+        viewer = view_volume_with_filters(volume, name="CT Volume", scale=voxel_scale)
 
     napari.run()
     
