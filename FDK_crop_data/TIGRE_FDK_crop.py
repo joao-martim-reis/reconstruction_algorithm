@@ -11,15 +11,11 @@ import nibabel as nib
 from matplotlib.widgets import Slider, Button
 from datetime import datetime
 
+
 from geometry_reconstruction import setup_geometry
 from crop_functions import select_crop_region, apply_crop_to_projections
+from data_processing_crop import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
 
-from data_processing_crop import (
-    load_images, 
-    generate_collapsed_sinogram,
-    selecionar_roi_I0,
-    get_I0_from_roi,
-)
 
 # Import HU conversion function
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -250,7 +246,6 @@ def main(tiff_folder, configurations, output_folder=None):
         print(f"--> Downsampling by {f}x...")
         projections_final = downsample_block_mean_pad(projections_norm, f).astype(np.float32)
         pixel_size = configurations['pixel_size'] * f
-        print(f"    Final shape: {projections_final.shape}")
         
         del projections_norm
         gc.collect() # Garbage collection
@@ -310,9 +305,7 @@ def main(tiff_folder, configurations, output_folder=None):
     if export_choice == 'y' and nii_filepath is not None:
         hu_choice = input("\nDo you want to also export in Hounsfield Units (HU)? (y/n): ").strip().lower()
         if hu_choice == 'y':
-            print("\n" + "="*60)
             print("  HU CONVERSION SETUP")
-            print("="*60)
             print("Please provide the gray scale values measured from the reconstruction:")
             water_val = float(input("  Enter gray scale value for WATER: "))
             air_val = float(input("  Enter gray scale value for AIR: "))
@@ -327,12 +320,12 @@ if __name__ == "__main__":
         'pixel_size': 0.05,
         'DSD': 925,
         'DSO': (925-32),
-        'downsample': 4,
+        'downsample': 2,
         'total_angle': 2 * np.pi,
         'calibrated_shift_px': 5.12,
         'shift_sign': 1,           
         'filter_type': 'hann',
-        'voxel_ratio': 2,
+        'voxel_ratio': 1,
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Image_reconstruction\reconstructed_volumes_Nift'
     }
     

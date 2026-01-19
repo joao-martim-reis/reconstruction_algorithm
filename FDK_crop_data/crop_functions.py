@@ -5,27 +5,23 @@ from matplotlib.widgets import Button
 
 def select_crop_region(first_projection):
     """
-    Interface interativa para selecionar região de crop nas projeções RAW (antes da normalização).
+    Interactive interface to select crop region on RAW projections (before normalization).
+    - LEFT CLICK: Define vertical line → crop width (symmetric around center)
+    - RIGHT CLICK: Define horizontal line → crop height (from top to clicked line)
     
-    - Botão ESQUERDO: Define linha vertical → largura do crop (simétrico em relação ao centro)
-    - Botão DIREITO: Define linha horizontal → altura do crop (do topo até a linha clicada)
-    
-    Returns:
-        crop_params: dict com 'row_start', 'row_end', 'col_start', 'col_end'
     """
     print("--> [4/5] Select crop region on first projection...")
-    print("    Instructions:")
     print("    1. LEFT CLICK → define VERTICAL line (symmetric crop around center)")
     print("    2. RIGHT CLICK → define HORIZONTAL line (crop from top to that line)")
-    print("    3. Click 'Confirm' when satisfied with the crop")
+
     
     height, width = first_projection.shape
     center_col = width // 2
     
-    # Estado da seleção
+    # Selection state
     crop_state = {
-        'vertical_line': None,   # Distância do centro (em pixels)
-        'horizontal_line': None  # Linha horizontal (row index)
+        'vertical_line': None,   # Distance from center (in pixels)
+        'horizontal_line': None  # Horizontal line (row index)
     }
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
@@ -43,7 +39,7 @@ def select_crop_region(first_projection):
     ax2.set_xlabel("Width (px)")
     ax2.set_ylabel("Height (px)")
     
-    # Linhas de guia
+    # Guide lines
     vline_left = ax1.axvline(x=0, color='cyan', linestyle='--', linewidth=2, visible=False)
     vline_right = ax1.axvline(x=width, color='cyan', linestyle='--', linewidth=2, visible=False)
     hline = ax1.axhline(y=0, color='yellow', linestyle='--', linewidth=2, visible=False)
@@ -54,7 +50,7 @@ def select_crop_region(first_projection):
                          bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
     def update_preview():
-        """Atualiza o preview do crop"""
+        """Update crop preview"""
         if crop_state['vertical_line'] is not None and crop_state['horizontal_line'] is not None:
             dist = crop_state['vertical_line']
             row_end = crop_state['horizontal_line']
@@ -84,9 +80,9 @@ def select_crop_region(first_projection):
         
         x_click, y_click = event.xdata, event.ydata
         
-        # Botão esquerdo (1) → linha VERTICAL
+        # Left button (1) → VERTICAL line
         if event.button == 1:
-            # Clique VERTICAL → define largura simétrica
+            # VERTICAL click → define symmetric width
             dist_from_center = abs(x_click - center_col)
             crop_state['vertical_line'] = int(dist_from_center)
             
@@ -103,7 +99,7 @@ def select_crop_region(first_projection):
                              f"Width: {width_crop} px\n"
                              f"Horizontal: {'SELECTED' if crop_state['horizontal_line'] else 'Not selected'}")
         
-        # Botão direito (3) → linha HORIZONTAL
+        # Right button (3) → HORIZONTAL line
         elif event.button == 3:
             # Clique HORIZONTAL → define altura (do topo até a linha)
             crop_state['horizontal_line'] = int(y_click)
@@ -147,23 +143,14 @@ def select_crop_region(first_projection):
         'original_width': width
     }
     
-    print(f"    ✓ Crop defined: H={crop_params['row_end']-crop_params['row_start']} x W={crop_params['col_end']-crop_params['col_start']} px")
-    print(f"      Rows: {crop_params['row_start']} → {crop_params['row_end']}")
-    print(f"      Cols: {crop_params['col_start']} → {crop_params['col_end']}")
-    
+    print(f"    ✓ Crop defined")
     return crop_params
 
 
 def apply_crop_to_projections(projections, crop_params):
     """
-    Aplica crop a todas as projeções RAW (ANTES da normalização para reduzir processamento).
+    Apply crop to all RAW projections (BEFORE normalization to reduce processing).
     
-    Args:
-        projections: array (H, W, n_angles) - RAW projections
-        crop_params: dict retornado por select_crop_region()
-    
-    Returns:
-        cropped_projections: array (H_new, W_new, n_angles)
     """
     if crop_params is None:
         print("--> [5/5] No crop applied (using full projections)")

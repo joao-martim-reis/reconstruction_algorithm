@@ -41,9 +41,9 @@ def setup_geometry(img_shape, pixel_size, DSD, DSO, shift_pixels, total_angle,
     voxel_size_base = pixel_size / magnification
     voxel_size = voxel_size_base * voxel_ratio
     
+    print(f"    Pixel size: {pixel_size:.6f} mm")
     print(f"    Magnification: {magnification:.4f}")
-    print(f"    Base voxel size (Nyquist): {voxel_size_base:.6f} mm")
-    print(f"    Final voxel size (ratio={voxel_ratio}): {voxel_size:.6f} mm")
+    print(f"    Voxel size (ratio={voxel_ratio}): {voxel_size:.6f} mm")
     
     geo.dVoxel = np.array([voxel_size, voxel_size, voxel_size])
     
@@ -65,6 +65,7 @@ def setup_geometry(img_shape, pixel_size, DSD, DSO, shift_pixels, total_angle,
     # 2. The original calibrated shift
     
     shift_mm = shift_pixels * pixel_size
+    shift_mm_sign = shift_mm * shift_sign  # Apply sign
     
     if crop_params is not None:
         # Calculate how much the detector center moved due to crop
@@ -72,26 +73,19 @@ def setup_geometry(img_shape, pixel_size, DSD, DSO, shift_pixels, total_angle,
         new_center = (crop_params['col_end'] + crop_params['col_start']) / 2.0
         crop_shift_pixels = new_center - original_center
         crop_shift_mm = crop_shift_pixels * pixel_size
-        
+        crop_shift_mm = crop_shift_mm * shift_sign  # Apply sign
         # Total offset = calibrated shift + crop shift
-        total_shift_mm = shift_mm + crop_shift_mm * shift_sign
-        
-        print(f"    Calibrated shift: {shift_pixels:.2f} px = {shift_mm:.4f} mm")
-        print(f"    Crop shift: {crop_shift_pixels:.2f} px = {crop_shift_mm:.4f} mm")
-        print(f"    Total detector offset: {total_shift_mm:.4f} mm")
-        
+        total_shift_mm = shift_mm_sign + crop_shift_mm   
         geo.offDetector = np.array([0.0, total_shift_mm])
+        
     else:
         # No crop, just use calibrated shift
         print(f"    Detector shift: {shift_pixels:.2f} px = {shift_mm:.4f} mm")
-        geo.offDetector = np.array([0.0, shift_mm * shift_sign])
+        geo.offDetector = np.array([0.0, shift_mm_sign])
     
     geo.offOrigin = np.array([0, 0, 0])
     geo.rotDetector = np.array([0, 0, 0])
     
     angles = np.linspace(0, total_angle, n_angles, endpoint=False)
-    
-    print(f"    Detector size: {geo.nDetector} px = {geo.sDetector} mm")
-    print(f"    Volume size: {geo.nVoxel} voxels = {geo.sVoxel} mm")
     
     return geo, angles
