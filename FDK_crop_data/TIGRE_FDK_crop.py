@@ -131,11 +131,11 @@ def export_volume_HU(original_nii_path, volume, water_val, air_val):
 
 def normalize_projections(projections_raw, I0_override=None):
     """
-    Normaliza as projeções usando -log(I/I0).
+    Normalizes projections using -log(I/I0).
     
-    OTIMIZAÇÃO: Esta função agora recebe projeções JÁ CROPPED,
-    reduzindo drasticamente o número de operações matemáticas.
+    This function receives ALREADY CROPPED projections, drastically reducing the number of mathematical operations.
     """
+
     print("--> Normalizing cropped projections...")
     print(f"    Input shape: {projections_raw.shape}")
     print(f"    Memory size: {projections_raw.nbytes / 1e6:.1f} MB")
@@ -145,14 +145,10 @@ def normalize_projections(projections_raw, I0_override=None):
     else:
         I0 = float(I0_override)
 
-    # Convert to float32 for calculations (mais leve que float64)
+    # Convert to float32 for calculations (lighter than float64)
     projections_raw = projections_raw.astype(np.float32)
-    
-    # Avoid division by zero
-    ratio = projections_raw / (I0 + 1e-6)
-    
-    # Prevent log(0) and extreme values
-    ratio = np.clip(ratio, 1e-6, 1.2)
+    ratio = projections_raw / (I0 + 1e-6)# Avoid division by zero
+    ratio = np.clip(ratio, 1e-6, 1.2)# Prevent log(0) and extreme values
     
     # Beer-Lambert law: -log(I/I0)
     projections_norm = -np.log(ratio)
@@ -165,19 +161,38 @@ def normalize_projections(projections_raw, I0_override=None):
 
 
 def downsample_block_mean_pad(proj, f):
-    """Downsample projections by factor f using block-average with edge padding."""
-    H, W, A = proj.shape
+    """
+    This function reduces the spatial dimensions of projection images by computing
+    the mean value of non-overlapping blocks of pixels. Each block has dimensions
+    (f × f), and the resulting downsampled image has dimensions (H//f × W//f).
+
+    Edge padding is applied when the original dimensions are not evenly divisible
+    by the downsampling factor f. The padding uses edge replication mode, meaning
+    the last row/column of pixels are duplicated to fill the required padding space,
+    ensuring that all pixels can be grouped into complete f×f blocks without loss.
+
+    The downsampling process:
+    1. Pads the height and width dimensions to make them divisible by f
+    2. Reshapes the padded array to isolate f×f blocks
+    3. Computes the mean value across each block, replacing f×f pixels with 1
+    4. Preserves all angle dimensions without modification
+    
+    """
+    H, W, A = proj.shape # Height, Width, Angles
+    
+    # Calculate padding needed to make dimensions divisible by f
     pad_h = (-H) % f
     pad_w = (-W) % f
+    
+    # Apply edge padding if necessary to ensure clean division
     if pad_h or pad_w:
         proj_p = np.pad(proj, ((0, pad_h), (0, pad_w), (0, 0)), mode='edge')
     else:
         proj_p = proj
     
+    # Reshape to separate blocks and compute mean across block elements
     Hc, Wc = proj_p.shape[:2]
     return proj_p.reshape(Hc//f, f, Wc//f, f, A).mean(axis=(1, 3))
-
-
 
 
 def main(tiff_folder, configurations, output_folder=None):
@@ -194,11 +209,7 @@ def main(tiff_folder, configurations, output_folder=None):
     7. Downsample if needed (optional, after crop)
     8. Setup geometry (adjusted for crop)
     9. Reconstruct with FDK
-    
-    WHY THIS ORDER IS BETTER:
-    - Crop BEFORE normalize → fewer pixels to process in log/division operations
-    - Original script was normalizing ALL pixels then cropping → waste of CPU
-    - This order can be 2-5x faster depending on crop size
+
     """
     
     # 1. Load RAW images
@@ -215,7 +226,7 @@ def main(tiff_folder, configurations, output_folder=None):
     mean_I0 = get_I0_from_roi(sino_raw, roi_background)
     
     del sino_raw  # Free memory
-    gc.collect()
+    gc.collect() # Garbage collection
     
     # 4. SELECT CROP on first RAW projection
     first_proj_raw = projections_raw[:, :, 0]
@@ -225,13 +236,13 @@ def main(tiff_folder, configurations, output_folder=None):
     projections_cropped_raw = apply_crop_to_projections(projections_raw, crop_params)
     
     del projections_raw  # Free original data
-    gc.collect()
+    gc.collect() # Garbage collection
     
     # 6. Normalize ONLY the cropped projections (much faster!)
     projections_norm = normalize_projections(projections_cropped_raw, I0_override=mean_I0)
     
     del projections_cropped_raw  # Free cropped raw data
-    gc.collect()
+    gc.collect() # Garbage collection
     
     # 7. Downsample if needed (applied AFTER crop for max efficiency)
     if configurations['downsample'] > 1:
@@ -242,7 +253,7 @@ def main(tiff_folder, configurations, output_folder=None):
         print(f"    Final shape: {projections_final.shape}")
         
         del projections_norm
-        gc.collect()
+        gc.collect() # Garbage collection
     else:
         projections_final = projections_norm
         pixel_size = configurations['pixel_size']
@@ -269,7 +280,7 @@ def main(tiff_folder, configurations, output_folder=None):
     input_data = np.transpose(projections_final, (2, 0, 1)).copy()
     
     del projections_final
-    gc.collect()
+    gc.collect() # Garbage collection
     
     print("--> Running FDK...")
     volume = algs.fdk(input_data, geo, angles, filter=configurations['filter_type'])
@@ -325,8 +336,8 @@ if __name__ == "__main__":
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Image_reconstruction\reconstructed_volumes_Nift'
     }
     
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\marta_caixa_SiPM'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Mouse_PC'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Laranja'
