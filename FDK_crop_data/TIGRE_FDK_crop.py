@@ -12,14 +12,13 @@ from matplotlib.widgets import Slider, Button
 from datetime import datetime
 
 from geometry_reconstruction import setup_geometry
+from crop_functions import select_crop_region, apply_crop_to_projections
 
 from data_processing_crop import (
     load_images, 
     generate_collapsed_sinogram,
     selecionar_roi_I0,
     get_I0_from_roi,
-    select_crop_region,
-    apply_crop_to_projections
 )
 
 # Import HU conversion function
@@ -317,7 +316,7 @@ if __name__ == "__main__":
         'pixel_size': 0.05,
         'DSD': 925,
         'DSO': (925-32),
-        'downsample': 3,
+        'downsample': 4,
         'total_angle': 2 * np.pi,
         'calibrated_shift_px': 5.12,
         'shift_sign': 1,           
@@ -326,10 +325,10 @@ if __name__ == "__main__":
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Image_reconstruction\reconstructed_volumes_Nift'
     }
     
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\marta_caixa_SiPM'
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Mouse_PC'
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Mouse_PC'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Laranja'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Haste_perfeita\Try_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\PEIXE\PEIXE'
