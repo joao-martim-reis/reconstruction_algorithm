@@ -28,6 +28,10 @@ def reconstruct_single(sino, pixel_size, shift_px, shift_sign, filter_type):
 def select_crop_roi(projections, line, config):
     """
     Interactive ROI selection for cropping reconstructed images.
+    
+    Note: This is only used for more detailed visualization of specific regions.
+    It does not affect the actual reconstruction, only the displayed results.
+    
     Returns crop coordinates (row_start, row_end, col_start, col_end) or None for full image.
     """
     print("\n--> Select ROI for image cropping...")
@@ -75,82 +79,56 @@ def apply_crop(img, crop_roi):
 def show_shift_comparison(projections, line, mean_I0, config, crop_roi):
     """
     Phase 1: Show shift effect for ONE specific line.
-    Compare RAW vs NORMALIZED, with and without shift.
+    Compare RAW with and without shift.
     """
     print(f"Shift Analysis - Line {line}")
     
     sino_raw = extract_sinogram_raw(projections, line)
-    sino_norm = normalize_sinogram(sino_raw, mean_I0)
     
     shift_px = config['calibrated_shift_px']
     
     configs = [
-        {"label": "RAW - No Shift", "sino": sino_raw, "shift": 0.0},
-        {"label": f"RAW - Shift: {shift_px:.2f} px", "sino": sino_raw, "shift": shift_px},
-        {"label": "NORM - No Shift", "sino": sino_norm, "shift": 0.0},
-        {"label": f"NORM - Shift: {shift_px:.2f} px", "sino": sino_norm, "shift": shift_px}
+        {"label": "RAW - No Shift", "shift": 0.0},
+        {"label": f"RAW - Shift: {shift_px:.2f} px", "shift": shift_px}
     ]
     
     results = []
     for cfg in configs:
         print(f"  Reconstructing: {cfg['label']}...")
-        img = reconstruct_single(cfg['sino'], config['pixel_size'], cfg['shift'], 
+        img = reconstruct_single(sino_raw, config['pixel_size'], cfg['shift'], 
                                 config['shift_sign'], config['default_filter'])
         img_cropped = apply_crop(img, crop_roi)
         results.append({"label": cfg['label'], "image": img_cropped})
     
-    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
-    axes = axes.flatten()
-
-    # Store image objects for updating (separate RAW and NORM)
-    images_raw = []  # First 2 images (RAW)
-    images_norm = []  # Last 2 images (NORM)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     
-    for idx, (ax, result) in enumerate(zip(axes, results)):
+    # Store image objects for updating
+    images = []
+    
+    for ax, result in zip(axes, results):
         ax.set_title(result['label'], fontsize=11, fontweight='bold', pad=8)
         im = ax.imshow(result['image'], cmap='gray', interpolation='bilinear')
         ax.axis('off')
-        
-        if idx < 2:
-            images_raw.append((im, result))
-        else:
-            images_norm.append((im, result))
-    
+        images.append((im, result))
     
     plt.suptitle(f"Shift Comparison - Line {line} - Filter: {config['default_filter']}", 
                  fontsize=14, fontweight='bold', y=0.98)
     
-    # Add two sliders for contrast control - one for RAW, one for NORM
-    plt.subplots_adjust(bottom=0.25)
+    # Add slider for contrast control
+    plt.subplots_adjust(bottom=0.15)
+    ax_slider = plt.axes([0.2, 0.05, 0.6, 0.03])
+    slider = Slider(ax_slider, 'Contrast', 0.1, 2.0, valinit=1.0, valstep=0.05)
 
-    # Slider for RAW images
-    ax_slider_raw = plt.axes([0.1, 0.02, 0.35, 0.03])
-    slider_raw = Slider(ax_slider_raw, 'Contrast RAW', 0.1, 2.0, valinit=1.0, valstep=0.05)
-
-    # Slider for NORM images
-    ax_slider_norm = plt.axes([0.55, 0.02, 0.35, 0.03])
-    slider_norm = Slider(ax_slider_norm, 'Contrast NORM', 0.1, 2.0, valinit=1.0, valstep=0.05)
-
-    def update_contrast_raw(val):
-        contrast = slider_raw.val
-        for im, result in images_raw:
+    def update_contrast(val):
+        contrast = slider.val
+        for im, result in images:
             data = result['image']
             vmin = np.percentile(data, 1) / contrast
             vmax = np.percentile(data, 99) * contrast
             im.set_clim(vmin, vmax)
         fig.canvas.draw_idle()
 
-    def update_contrast_norm(val):
-        contrast = slider_norm.val
-        for im, result in images_norm:
-            data = result['image']
-            vmin = np.percentile(data, 1) / contrast
-            vmax = np.percentile(data, 99) * contrast
-            im.set_clim(vmin, vmax)
-        fig.canvas.draw_idle()
-
-    slider_raw.on_changed(update_contrast_raw)
-    slider_norm.on_changed(update_contrast_norm)
+    slider.on_changed(update_contrast)
     
     plt.tight_layout(pad=2)
     plt.show()
@@ -255,14 +233,14 @@ if __name__ == "__main__":
         'calibrated_shift_px': 5.12,
         'shift_sign': -1,
         'default_filter': 'hann',
-        #'filters': ['ram_lak', 'shepp_logan', 'hann', 'hamming', 'cosine', 'blackman']
         'filters': ['ram_lak', 'shepp_logan', 'hann']
+        #'filters': ['ram_lak', 'shepp_logan', 'hann', 'hamming', 'cosine', 'blackman']
     }
-    
+
     tiff_folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
     #tiff_folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
-    
+
     line_shift = 400
     lines_filters = [50, 400, 800]
-    
+
     run_reconstruction(tiff_folder, line_shift, lines_filters, CONFIG)

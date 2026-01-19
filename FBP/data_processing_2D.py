@@ -37,7 +37,7 @@ def load_images(tiff_folder):
 
 def extract_sinogram_raw(projections_stack, linha_escolhida):
     """
-    Extract a specific line and reverse order if necessary
+    Extract a specific line and stack into a sinogram.
     """
     sino_raw = projections_stack[linha_escolhida,:,:].astype(np.float32).T[:, ::-1] #[linha_escolhida,:,:] selects a single height line across all angles and detector widths
     return sino_raw

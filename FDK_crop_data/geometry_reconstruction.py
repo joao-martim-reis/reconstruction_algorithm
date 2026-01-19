@@ -2,6 +2,7 @@ import numpy as np
 import tigre
 
 
+
 def setup_geometry(img_shape, pixel_size, DSD, DSO, shift_pixels, total_angle, 
                    shift_sign, voxel_ratio=1.0, crop_params=None):
     """
@@ -23,9 +24,6 @@ def setup_geometry(img_shape, pixel_size, DSD, DSO, shift_pixels, total_angle,
         voxel_ratio: Multiplier for voxel size (1.0 = Nyquist optimal, <1 = higher res, >1 = lower res)
         crop_params: Dict with crop information (from select_crop_region)
         
-    Returns:
-        geo: TIGRE geometry object
-        angles: Array of projection angles
     """
     
     print(f"--> Setting up geometry...")
