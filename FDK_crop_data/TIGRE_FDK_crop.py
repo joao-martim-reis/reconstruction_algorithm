@@ -13,8 +13,9 @@ from datetime import datetime
 
 
 from geometry_reconstruction import setup_geometry
-from crop_functions import select_crop_region, apply_crop_to_projections
+from crop_projections import select_crop_region, apply_crop_to_projections
 from data_processing_crop import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
+from export_volumes import export_volume_to_nii, export_volume_HU
 
 
 # Import HU conversion function
@@ -33,96 +34,11 @@ def print_volume_info(volume, geo=None):
     print(f"Dimensions: {volume.shape}")
     print("="*60 + "\n") 
     print(f"\nGeometric information:")
-    print(f"  - Voxel size: {geo.dVoxel} mm")
+    print(f"  - Voxel size: {geo.dVoxel[0]:.3f}, {geo.dVoxel[1]:.3f}, {geo.dVoxel[2]:.3f} mm")
     print(f"  - Number of voxels: {geo.nVoxel}")
-    print(f"  - Physical dimensions: {geo.sVoxel} mm")
+    print(f"  - Physical dimensions: {geo.sVoxel[0]:.3f}, {geo.sVoxel[1]:.3f}, {geo.sVoxel[2]:.3f} mm")
     print("="*60 + "\n")
 
-
-def export_volume_to_nii(volume, geo, source_folder, base_output=None):
-    """
-    Exports the reconstructed volume to NIfTI format (.nii).
-    Creates a unique subfolder for each reconstruction inside base_output.
-    """
-    if base_output is None:
-        base_output = "reconstructed_volumes"
-    
-    dataset_name = os.path.basename(os.path.normpath(source_folder))
-    script_name = os.path.splitext(os.path.basename(__file__))[0]
-
-    now = datetime.now()
-    month_abbr = now.strftime("%b").lower()
-    timestamp = f"{now.day}_{month_abbr}_{now.hour}h{now.minute}"
-    
-    folder_name = f"{script_name}_{dataset_name}_{timestamp}"
-    output_folder = os.path.join(base_output, folder_name)
-    
-    os.makedirs(output_folder, exist_ok=True)
-    
-    filename = f"{dataset_name}.nii"
-    filepath = os.path.join(output_folder, filename)
-    
-    volume_export = volume.astype(np.float32)
-    volume_export = np.transpose(volume_export, (2, 1, 0))
-    
-    affine = np.eye(4)
-    affine[0, 0] = geo.dVoxel[2]
-    affine[1, 1] = geo.dVoxel[1]
-    affine[2, 2] = geo.dVoxel[0]
-    
-    affine[0, 3] = -(volume_export.shape[0] * geo.dVoxel[2]) / 2.0
-    affine[1, 3] = -(volume_export.shape[1] * geo.dVoxel[1]) / 2.0
-    affine[2, 3] = -(volume_export.shape[2] * geo.dVoxel[0]) / 2.0
-    
-    nii_img = nib.Nifti1Image(volume_export, affine)
-    nii_img.header.set_xyzt_units('mm', 'sec')
-    nii_img.header['descrip'] = f'FDK Reconstruction - {dataset_name}'
-    
-    print(f"    Saving NIfTI file...")
-    nib.save(nii_img, filepath)
-    print(f"    ✓ File saved successfully!")
-    
-    metadata_file = os.path.join(output_folder, "metadata.txt")
-    with open(metadata_file, 'w') as f:
-        f.write(f"Volume Reconstruction Metadata\n")
-        f.write(f"Volume Information (exported to NIfTI):\n")
-        f.write(f"  Exported shape (X, Y, Z): {volume_export.shape}\n")
-        f.write(f"  Original shape (TIGRE): {volume.shape} (Z, Y, X)\n")
-        f.write(f"  Data type: {volume_export.dtype}\n")
-        f.write(f"  Total size (bytes): {volume_export.nbytes}\n\n")
-        f.write(f"  Geometry Information:\n")
-        f.write(f"  Voxel size (mm): {geo.dVoxel}\n")
-        f.write(f"  Number of voxels: {geo.nVoxel}\n")
-        f.write(f"  Physical dimensions (mm): {geo.sVoxel}\n")
-        f.write(f"  DSD: {geo.DSD} mm\n")
-        f.write(f"  DSO: {geo.DSO} mm\n\n")
-        f.write(f"  Python: {sys.version.split()[0]} ({sys.platform})\n")
-        f.write(f"  TIGRE version: {getattr(tigre, '__version__', 'unknown')}\n")
-
-    return filepath
-
-
-def export_volume_HU(original_nii_path, volume, water_val, air_val):
-    """
-    Converts the volume to HU and saves with _HU suffix.
-    Reuses the header/affine from the original .nii file.
-    """
-    volume_HU = HU_conversion(volume, water_val, air_val)
-    original_nii = nib.load(original_nii_path)
-    
-    volume_HU_export = volume_HU.astype(np.float32)
-    volume_HU_export = np.transpose(volume_HU_export, (2, 1, 0))
-    
-    nii_HU = nib.Nifti1Image(volume_HU_export, original_nii.affine, original_nii.header)
-    nii_HU.header['descrip'] = original_nii.header['descrip'].decode() + ' (HU)'
-    
-    filepath_HU = original_nii_path.replace('.nii', '_HU.nii')
-    nib.save(nii_HU, filepath_HU)
-    
-    filename_HU = os.path.basename(filepath_HU)
-    print(f"    ✓ Volume in Hounsfield Units saved: {filename_HU}")
-    
-    return filepath_HU
 
 
 def normalize_projections(projections_raw, I0_override=None):
@@ -191,73 +107,115 @@ def downsample_block_mean_pad(proj, f):
     return proj_p.reshape(Hc//f, f, Wc//f, f, A).mean(axis=(1, 3))
 
 
+
+
+
+
+
+
 def main(tiff_folder, configurations, output_folder=None):
     """
-    Main reconstruction pipeline with memory-efficient cropping.
+    Main FDK reconstruction pipeline with memory-efficient cropping workflow.
     
-    OPTIMIZED PIPELINE:
-    1. Load images (RAW)
-    2. Generate collapsed sinogram (RAW - for I0 selection)
-    3. Select I0 ROI (on collapsed sinogram)
-    4. SELECT CROP REGION (on first RAW projection)
-    5. Apply crop to all RAW projections → HUGE memory reduction
-    6. Normalize ONLY the cropped projections → much faster!
-    7. Downsample if needed (optional, after crop)
-    8. Setup geometry (adjusted for crop)
-    9. Reconstruct with FDK
 
+    PHASE 1: Data Loading & Preprocessing
+        - Load raw projections from TIFF files
+        - Generate collapsed sinogram for I0 calibration
+        - Select background ROI and calculate I0 reference value
+    
+    PHASE 2: Spatial Optimization (Memory Reduction)
+        - Define crop region on first raw projection
+        - Apply crop to all raw projections (reduces memory footprint)
+        - Normalize cropped projections using Beer-Lambert law
+        - Optional: Downsample for faster reconstruction
+    
+    PHASE 3: Geometry & Reconstruction
+        - Setup TIGRE geometry with crop-adjusted parameters
+        - Execute FDK algorithm with filtered backprojection
+    
+    PHASE 4: Post-Processing & Export
+        - Visualize volume in Napari
+        - Optional: Export to NIfTI format
+        - Optional: Convert to Hounsfield Units (HU)
+    
+    This workflow minimizes memory usage by cropping BEFORE normalization,
+    rather than processing full-size projections.
     """
     
-    # 1. Load RAW images
-    projections_raw = load_images(tiff_folder)
     
-    print(f"\n--> RAW projections loaded: {projections_raw.shape}")
-    print(f"    Memory: {projections_raw.nbytes / 1e6:.1f} MB")
+    # PHASE 1: DATA LOADING & PREPROCESSING
+    
+    print("\n" + "="*70)
+    print("PHASE 1: DATA LOADING & PREPROCESSING")
+    print("="*70)
+    
+    # Step 1.1: Load raw TIFF projection images
+    projections_raw = load_images(tiff_folder)
 
-    # 2. Collapsed sinogram for I0 selection (using RAW data)
+    # Step 1.2: Generate collapsed sinogram for I0 reference selection
     sino_raw = generate_collapsed_sinogram(projections_raw)
     
-    # 3. Select I0 ROI
+    # Step 1.3: User selects background ROI and calculates mean I0 value
     roi_background = selecionar_roi_I0(sino_raw)
     mean_I0 = get_I0_from_roi(sino_raw, roi_background)
     
-    del sino_raw  # Free memory
-    gc.collect() # Garbage collection
+    # Clean up: free sinogram memory
+    del sino_raw
+    gc.collect()
     
-    # 4. SELECT CROP on first RAW projection
+    
+    # PHASE 2: SPATIAL OPTIMIZATION (MEMORY REDUCTION)
+    
+    print("\n" + "="*70)
+    print("PHASE 2: SPATIAL OPTIMIZATION")
+    print("="*70)
+    
+    # Step 2.1: Define crop region on first raw projection
     first_proj_raw = projections_raw[:, :, 0]
     crop_params = select_crop_region(first_proj_raw)
     
-    # 5. Apply crop to all RAW projections (BEFORE normalization!)
+    # Step 2.2: Apply crop to ALL raw projections
     projections_cropped_raw = apply_crop_to_projections(projections_raw, crop_params)
+
+    # Clean up: free original raw data
+    del projections_raw
+    gc.collect()
     
-    del projections_raw  # Free original data
-    gc.collect() # Garbage collection
-    
-    # 6. Normalize ONLY the cropped projections (much faster!)
+    # Step 2.3: Normalize cropped projections using Beer-Lambert law: -log(I/I0)
     projections_norm = normalize_projections(projections_cropped_raw, I0_override=mean_I0)
     
-    del projections_cropped_raw  # Free cropped raw data
-    gc.collect() # Garbage collection
+    # Clean up: free cropped raw data
+    del projections_cropped_raw
+    gc.collect()
     
-    # 7. Downsample if needed (applied AFTER crop for max efficiency)
+    # Step 2.4: Optional downsampling (applied AFTER crop for maximum efficiency)
     if configurations['downsample'] > 1:
         f = configurations['downsample']
-        print(f"--> Downsampling by {f}x...")
+        print(f"Downsampling by factor {f}x...")
         projections_final = downsample_block_mean_pad(projections_norm, f).astype(np.float32)
         pixel_size = configurations['pixel_size'] * f
+        print(f"      Final shape: {projections_final.shape}")
         
         del projections_norm
-        gc.collect() # Garbage collection
+        gc.collect()
     else:
         projections_final = projections_norm
         pixel_size = configurations['pixel_size']
     
-    # 8. Adjust shift for downsampling
+    
+    # PHASE 3: GEOMETRY SETUP & RECONSTRUCTION
+   
+    print("\n" + "="*70)
+    print("PHASE 3: GEOMETRY SETUP & RECONSTRUCTION")
+    print("="*70)
+    
+    # Step 3.1: Calculate detector shift (adjusted for downsampling factor)
     calibrated_shift_px = configurations['calibrated_shift_px']
     shift_val = calibrated_shift_px / configurations['downsample']
+    print(f"[3.1] Detector shift calculated: {shift_val:.3f} pixels")
     
-    # 9. Setup geometry (CRITICAL: pass crop_params for correct offset)
+    # Step 3.2: Setup TIGRE geometry
+    # (CRITICAL: crop_params adjusts detector offset for correct reconstruction center)
     geo, angles = setup_geometry(
         projections_final.shape, 
         pixel_size, 
@@ -267,30 +225,46 @@ def main(tiff_folder, configurations, output_folder=None):
         configurations['total_angle'], 
         shift_sign=configurations['shift_sign'], 
         voxel_ratio=configurations['voxel_ratio'],
-        crop_params=crop_params  # ← CRITICAL for correct detector offset
+        crop_params=crop_params  # ← Adjusts detector offset for cropped region
     )
+    print(f"      Detector size: {geo.nDetector}")
+    print(f"      Voxel size: {geo.dVoxel}")
 
-    # 10. Reconstruction
-    print("--> Preparing data for TIGRE...")
+    # Step 3.3: Prepare data for TIGRE (transpose to TIGRE format: angles × height × width)
+    print(f"Preparing data for TIGRE...")
     input_data = np.transpose(projections_final, (2, 0, 1)).copy()
     
+    # Clean up: free final projections
     del projections_final
-    gc.collect() # Garbage collection
+    gc.collect()
     
-    print("--> Running FDK...")
+
+    # Step 3.4: EXECUTE FDK reconstruction algorithm
+    print(f"Running FDK algorithm with '{configurations['filter_type']}' filter...")
     volume = algs.fdk(input_data, geo, angles, filter=configurations['filter_type'])
     print_volume_info(volume, geo)
     
-    # Export options
+    
+    # PHASE 4: POST-PROCESSING & EXPORT
+    
+    print("\n" + "="*70)
+    print("PHASE 4: POST-PROCESSING & EXPORT")
+    print("="*70)
+    
+    # Step 4.1: Optional NIfTI export
     export_choice = input("\nDo you want to export the volume to .nii format? (y/n): ").strip().lower()
     nii_filepath = None
     if export_choice == 'y':
         nii_filepath = export_volume_to_nii(volume, geo, tiff_folder, base_output=output_folder)
+        print(f"Volume exported to NIfTI format")
+    else:
+        print(f"NIfTI export skipped")
     
-    # Napari visualization
-    print("--> Opening Napari...")
+    # Step 4.2: Napari visualization
+    print(f"Opening Napari viewer...")
     viewer = napari.Viewer()
     
+    # Add volume with correct voxel spacing
     ndim = volume.ndim 
     if ndim == 2:
         viewer.add_image(volume, scale=(geo.dVoxel[1], geo.dVoxel[2]))
@@ -301,16 +275,25 @@ def main(tiff_folder, configurations, output_folder=None):
 
     napari.run()
     
-    # HU conversion
+
+    # Step 4.3: Optional Hounsfield Unit (HU) conversion
     if export_choice == 'y' and nii_filepath is not None:
         hu_choice = input("\nDo you want to also export in Hounsfield Units (HU)? (y/n): ").strip().lower()
         if hu_choice == 'y':
-            print("  HU CONVERSION SETUP")
-            print("Please provide the gray scale values measured from the reconstruction:")
-            water_val = float(input("  Enter gray scale value for WATER: "))
-            air_val = float(input("  Enter gray scale value for AIR: "))
+            print(f"HU CONVERSION SETUP")
+            print("      Please provide the gray scale values measured from the reconstruction:")
+            water_val = float(input("      Enter gray scale value for WATER: "))
+            air_val = float(input("      Enter gray scale value for AIR: "))
             
             export_volume_HU(nii_filepath, volume, water_val, air_val)
+            print(f"      Volume converted to Hounsfield Units and exported")
+        else:
+            print(f"[4.3] HU conversion skipped")
+
+
+    print("\n" + "="*70)
+    print("RECONSTRUCTION PIPELINE COMPLETED")
+    print("="*70 + "\n")
     
     return volume
 
@@ -320,7 +303,7 @@ if __name__ == "__main__":
         'pixel_size': 0.05,
         'DSD': 925,
         'DSO': (925-32),
-        'downsample': 2,
+        'downsample': 1,
         'total_angle': 2 * np.pi,
         'calibrated_shift_px': 5.12,
         'shift_sign': 1,           
@@ -329,6 +312,7 @@ if __name__ == "__main__":
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Image_reconstruction\reconstructed_volumes_Nift'
     }
     
+
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
     folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\marta_caixa_SiPM'
