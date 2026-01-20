@@ -16,6 +16,7 @@ from geometry_reconstruction import setup_geometry
 from crop_projections import select_crop_region, apply_crop_to_projections
 from data_processing_crop import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
 from export_volumes import export_volume_to_nii, export_volume_HU
+from napari_filters import interactive_filter_viewer
 
 
 # Import HU conversion function
@@ -262,16 +263,26 @@ def main(tiff_folder, configurations, output_folder=None):
     
     # Step 4.2: Napari visualization
     print(f"Opening Napari viewer...")
-    viewer = napari.Viewer()
     
-    # Add volume with correct voxel spacing
-    ndim = volume.ndim 
-    if ndim == 2:
-        viewer.add_image(volume, scale=(geo.dVoxel[1], geo.dVoxel[2]))
-    elif ndim == 3:
-        viewer.add_image(volume, scale=(geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]))
+    # Voxel scale for napari
+    voxel_scale = (geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]) if volume.ndim == 3 else (geo.dVoxel[1], geo.dVoxel[2])
+    
+    # Ask if user wants interactive filtering
+    filter_choice = input("\nDo you want to use INTERACTIVE filtering? (y/n): ").strip().lower()
+    
+    if filter_choice == 'y':
+        # Open interactive viewer with filters
+        viewer = interactive_filter_viewer(volume, name="CT Volume", scale=voxel_scale, nii_filepath=nii_filepath)
     else:
-        viewer.add_image(volume)
+        # Just view volume without filtering
+        viewer = napari.Viewer()
+        ndim = volume.ndim 
+        if ndim == 2:
+            viewer.add_image(volume, scale=(geo.dVoxel[1], geo.dVoxel[2]))
+        elif ndim == 3:
+            viewer.add_image(volume, scale=(geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]))
+        else:
+            viewer.add_image(volume)
 
     napari.run()
     
