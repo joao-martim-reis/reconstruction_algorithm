@@ -72,6 +72,7 @@ def setup_geometry(img_shape, pixel_size, DSD, DSO, shift_pixels, total_angle,
         original_center = crop_params['original_center_col']
         new_center = (crop_params['col_end'] + crop_params['col_start']) / 2.0
         crop_shift_pixels = new_center - original_center
+        print(f" New center: {new_center:.2f} px (original: {original_center:.2f} px)")
         crop_shift_mm = crop_shift_pixels * pixel_size
         crop_shift_mm = crop_shift_mm * shift_sign  # Apply sign
         # Total offset = calibrated shift + crop shift

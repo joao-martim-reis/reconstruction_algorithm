@@ -35,9 +35,9 @@ def print_volume_info(volume, geo=None):
     print(f"Dimensions: {volume.shape}")
     print("="*60 + "\n") 
     print(f"\nGeometric information:")
-    print(f"  - Voxel size: {geo.dVoxel[0]:.3f}, {geo.dVoxel[1]:.3f}, {geo.dVoxel[2]:.3f} mm")
+    print(f"  - Voxel size: [{geo.dVoxel[0]:.3f}, {geo.dVoxel[1]:.3f}, {geo.dVoxel[2]:.3f}] mm")
     print(f"  - Number of voxels: {geo.nVoxel}")
-    print(f"  - Physical dimensions: {geo.sVoxel[0]:.3f}, {geo.sVoxel[1]:.3f}, {geo.sVoxel[2]:.3f} mm")
+    print(f"  - Physical dimensions: [{geo.sVoxel[0]:.3f}, {geo.sVoxel[1]:.3f}, {geo.sVoxel[2]:.3f}] mm")
     print("="*60 + "\n")
 
 
@@ -106,10 +106,6 @@ def downsample_block_mean_pad(proj, f):
     # Reshape to separate blocks and compute mean across block elements
     Hc, Wc = proj_p.shape[:2]
     return proj_p.reshape(Hc//f, f, Wc//f, f, A).mean(axis=(1, 3))
-
-
-
-
 
 
 
@@ -213,7 +209,7 @@ def main(tiff_folder, configurations, output_folder=None):
     # Step 3.1: Calculate detector shift (adjusted for downsampling factor)
     calibrated_shift_px = configurations['calibrated_shift_px']
     shift_val = calibrated_shift_px / configurations['downsample']
-    print(f"[3.1] Detector shift calculated: {shift_val:.3f} pixels")
+    print(f" Detector shift calculated: {shift_val:.3f} pixels")
     
     # Step 3.2: Setup TIGRE geometry
     # (CRITICAL: crop_params adjusts detector offset for correct reconstruction center)
@@ -261,18 +257,21 @@ def main(tiff_folder, configurations, output_folder=None):
     else:
         print(f"NIfTI export skipped")
     
-    # Step 4.2: Napari visualization
+
+
+    # Step 4.2: NAPARI visualization
     print(f"Opening Napari viewer...")
     
     # Voxel scale for napari
     voxel_scale = (geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]) if volume.ndim == 3 else (geo.dVoxel[1], geo.dVoxel[2])
     
     # Ask if user wants interactive filtering
-    filter_choice = input("\nDo you want to use INTERACTIVE filtering? (y/n): ").strip().lower()
+    filter_choice = input("\nDo you want to use INTERACTIVE filtering? (y/n): ").strip().lower() #strip is to remove extra spaces
     
     if filter_choice == 'y':
         # Open interactive viewer with filters
-        viewer = interactive_filter_viewer(volume, name="CT Volume", scale=voxel_scale, nii_filepath=nii_filepath)
+        filtered_folder = configurations.get('filtered_volumes_folder')
+        viewer = interactive_filter_viewer(volume, name="CT Volume", scale=voxel_scale, nii_filepath=nii_filepath, filtered_output_folder=filtered_folder)
     else:
         # Just view volume without filtering
         viewer = napari.Viewer()
@@ -314,18 +313,19 @@ if __name__ == "__main__":
         'pixel_size': 0.05,
         'DSD': 925,
         'DSO': (925-32),
-        'downsample': 1,
+        'downsample': 4,
         'total_angle': 2 * np.pi,
         'calibrated_shift_px': 5.12,
         'shift_sign': 1,           
         'filter_type': 'hann',
-        'voxel_ratio': 1,
-        'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Image_reconstruction\reconstructed_volumes_Nift'
+        'voxel_ratio': 2,
+        'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift',
+        'filtered_volumes_folder': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\Filtered_volumes.Nift'  # Custom path for filtered volumes
     }
     
 
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\marta_caixa_SiPM'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Mouse_PC'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Laranja'

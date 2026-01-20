@@ -32,6 +32,9 @@ def select_crop_region(first_projection):
     ax1.set_title("Original Projection\n(Click to define crop)", fontsize=12)
     ax1.set_xlabel("Width (px)")
     ax1.set_ylabel("Height (px)")
+    # Force ax1 to always show full original image
+    ax1.set_xlim(0, width)
+    ax1.set_ylim(height, 0)
     
     # Plot preview
     im2 = ax2.imshow(first_projection, cmap='gray', aspect='auto', origin='upper')
@@ -116,7 +119,8 @@ def select_crop_region(first_projection):
     
     fig.canvas.mpl_connect('button_press_event', on_click)
     
-    ax_button = plt.axes([0.7, 0.05, 0.2, 0.075])
+    # Button positioned lower and centered to avoid overlapping
+    ax_button = plt.axes([0.4, 0.02, 0.2, 0.06])
     btn_confirm = Button(ax_button, 'Confirm Crop')
     
     def confirm_crop(event):
