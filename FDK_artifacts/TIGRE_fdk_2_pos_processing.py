@@ -134,7 +134,7 @@ def main(tiff_folder, configurations, output_folder=None):
     # 4. Select I0 ROI for normalization
     sino_raw = generate_collapsed_sinogram(projections)
     roi_background = selecionar_roi_I0(sino_raw)
-    mean_I0 = get_I0_from_roi(sino_raw, roi_background)
+    mean_I0 = get_I0_from_roi(sino_raw, roi_background, projections.shape[0])
 
     # 5. Normalize projections
     projections_norm = normalize_projections(projections, I0_override=mean_I0)

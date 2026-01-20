@@ -154,7 +154,7 @@ def main(tiff_folder, configurations, output_folder=None):
     
     # Step 1.3: User selects background ROI and calculates mean I0 value
     roi_background = selecionar_roi_I0(sino_raw)
-    mean_I0 = get_I0_from_roi(sino_raw, roi_background)
+    mean_I0 = get_I0_from_roi(sino_raw, roi_background, projections_raw.shape[0])
     
     # Clean up: free sinogram memory
     del sino_raw
@@ -272,6 +272,11 @@ def main(tiff_folder, configurations, output_folder=None):
         # Open interactive viewer with filters
         filtered_folder = configurations.get('filtered_volumes_folder')
         viewer = interactive_filter_viewer(volume, name="CT Volume", scale=voxel_scale, nii_filepath=nii_filepath, filtered_output_folder=filtered_folder)
+        napari.run()
+        
+        # Print summary of applied filters after closing napari
+        from napari_filters import print_applied_filters_summary
+        print_applied_filters_summary(viewer.current_filter_params)
     else:
         # Just view volume without filtering
         viewer = napari.Viewer()
@@ -318,7 +323,7 @@ if __name__ == "__main__":
         'calibrated_shift_px': 5.12,
         'shift_sign': 1,           
         'filter_type': 'hann',
-        'voxel_ratio': 2,
+        'voxel_ratio': 1,
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift',
         'filtered_volumes_folder': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\Filtered_volumes.Nift'  # Custom path for filtered volumes
     }
@@ -334,4 +339,5 @@ if __name__ == "__main__":
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\Suporte_micro_ct_I3N'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\peixe_joao'
     
+
     vol = main(folder, CONFIG, output_folder=CONFIG.get('output_folder_NiFT'))

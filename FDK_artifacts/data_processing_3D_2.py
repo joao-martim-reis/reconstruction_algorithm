@@ -115,13 +115,14 @@ def selecionar_roi_I0(sino_raw):
     return roi_background[0]
 
 
-def get_I0_from_roi(sino_raw, roi_background):
+def get_I0_from_roi(sino_raw, roi_background, height):
     """
     Calcula o valor médio de I0 a partir da ROI de background.
     """
     r_start, r_end, c_start, c_end = roi_background
     roi_crop = sino_raw[r_start:r_end, c_start:c_end]
-    mean_I0 = np.mean(roi_crop)
+    mean_I0 = (np.mean(roi_crop)) / height
+    print(f"--> I0 value: {mean_I0:.2f}")
     return mean_I0
 
 
