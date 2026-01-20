@@ -60,11 +60,6 @@ The pipeline performs the following steps:
 **HU export (optional)**
 - If requested, the volume is converted to Hounsfield Units (HU) using user-provided intensity references for water and air.
 
-### Core dependencies
-- Numerics and I/O: `numpy`, `tifffile`, `nibabel`
-- Reconstruction: `tigre`
-- Visualization/interaction: `matplotlib`, `napari`, `magicgui`
-- Image processing: `scipy`, `scikit-image`, `tqdm`
 
 ## Pipeline Organization (Phases)
 
@@ -154,14 +149,6 @@ The pipeline performs the following steps:
 
 ## Configuration and Usage
 Update the `CONFIG` dictionary and the input folder path in `MAIN_TIGRE_FDK_crop.py` to match your acquisition setup. The script will prompt for interactive ROI selection, cropping, and export choices.
-
-```bash
-python MAIN_TIGRE_FDK_crop.py
-```
-
-## Reproducibility Notes
-- Acquisition and reconstruction parameters are centralized in `CONFIG`.
-- Exported volumes include a provenance record (`metadata.txt`) with geometry and software versions.
 
 ## Limitations
 - The beam-hardening and cupping corrections included here are simplified, heuristic post-processing methods intended for exploratory analysis; quantitative CT workflows typically require calibration-based or physics-informed corrections.
