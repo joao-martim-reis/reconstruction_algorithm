@@ -271,12 +271,12 @@ def main(tiff_folder, configurations, output_folder=None):
     if filter_choice == 'y':
         # Open interactive viewer with filters
         filtered_folder = configurations.get('filtered_volumes_folder')
-        viewer = interactive_filter_viewer(volume, name="CT Volume", scale=voxel_scale, nii_filepath=nii_filepath, filtered_output_folder=filtered_folder)
+        viewer, final_filter_params = interactive_filter_viewer(volume, name="CT Volume", scale=voxel_scale, nii_filepath=nii_filepath, filtered_output_folder=filtered_folder)
         napari.run()
-        
+
         # Print summary of applied filters after closing napari
         from napari_filters import print_applied_filters_summary
-        print_applied_filters_summary(viewer.current_filter_params)
+        print_applied_filters_summary(final_filter_params)
     else:
         # Just view volume without filtering
         viewer = napari.Viewer()
@@ -329,15 +329,14 @@ if __name__ == "__main__":
     }
     
 
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\marta_caixa_SiPM'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Mouse_PC'
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Laranja'
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Laranja'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Haste_perfeita\Try_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\PEIXE\PEIXE'
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\Suporte_micro_ct_I3N'
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\peixe_joao'
+
     
 
     vol = main(folder, CONFIG, output_folder=CONFIG.get('output_folder_NiFT'))

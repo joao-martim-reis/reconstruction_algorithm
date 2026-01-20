@@ -272,11 +272,9 @@ def interactive_filter_viewer(volume, name="CT Volume", scale=None, nii_filepath
     # Add widgets to viewer
     viewer.window.add_dock_widget(apply_filter, area='right', name=' Filter Controls')
     viewer.window.add_dock_widget(save_results, area='right', name=' Save')
-    
-    # Store current_params in viewer for retrieval after closing
-    viewer.current_filter_params = current_params
-    
-    return viewer
+
+    # Return viewer and current params (don't attach to Viewer object)
+    return viewer, current_params
 
 
 # UTILITY FUNCTIONS
