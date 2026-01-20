@@ -141,7 +141,7 @@ def apply_cupping_correction(volume, strength=0.5):
 
 # NAPARI INTERACTIVE VIEWER
 
-def interactive_filter_viewer(volume, name="CT Volume", scale=None, nii_filepath=None, filtered_output_folder=None):
+def interactive_filter_viewer(volume, name="CT Volume", scale=None, nii_filepath=None, filtered_output_folder=None, allow_saving=True):
     """
     Open napari viewer with interactive filter controls using sliders.
     
@@ -256,27 +256,39 @@ def interactive_filter_viewer(volume, name="CT Volume", scale=None, nii_filepath
         filtered_layer.data = filtered_data
         print(f"    ✓ Filter applied! Adjust sliders and click 'Apply Filter' to update")
     
-    # Create save button
-    @magicgui(call_button="Save Filtered Volume")
+    # Create save button (optional)
+    if allow_saving:
+        @magicgui(call_button="Save Filtered Volume")
+        def save_results():
+            if current_params['filter_type'] == 'None':
+                print("\n No filter applied - nothing to save")
+                return
 
-    def save_results():
-        
-        if current_params['filter_type'] == 'None':
-            print("\n No filter applied - nothing to save")
-            return
+            # Save filtered volume (parameters saved inside save_filtered_volume)
+            filtered_data = filtered_layer.data
+            # If no filtered_output_folder provided, save next to original file
+            if filtered_output_folder:
+                out_folder = filtered_output_folder
+            elif nii_filepath:
+                out_folder = os.path.dirname(nii_filepath)
+            else:
+                out_folder = os.getcwd()
+
+            # Build output filename
+            out_name = os.path.splitext(os.path.basename(nii_filepath or 'filtered_volume.nii'))[0] + '_filtered.nii'
+            out_path = os.path.join(out_folder, out_name)
+
+            save_filtered_volume(filtered_data, out_path, nii_filepath)
+
+        # Add widgets to viewer
+        viewer.window.add_dock_widget(apply_filter, area='right', name=' Filter Controls')
+        viewer.window.add_dock_widget(save_results, area='right', name=' Save')
+    else:
+        # Only add filter controls; saving is disabled
+        viewer.window.add_dock_widget(apply_filter, area='right', name=' Filter Controls')
     
-        # Save filtered volume (parameters saved inside save_filtered_volume)
-        filtered_data = filtered_layer.data
-        save_filtered_volume(filtered_data, nii_filepath, filtered_output_folder, current_params)
-    
-    # Add widgets to viewer
-    viewer.window.add_dock_widget(apply_filter, area='right', name=' Filter Controls')
-    viewer.window.add_dock_widget(save_results, area='right', name=' Save')
-    
-    # Store current_params in viewer for retrieval after closing
-    viewer.current_filter_params = current_params
-    
-    return viewer
+    # Return viewer and the final parameters dict for retrieval after closing
+    return viewer, current_params
 
 
 # UTILITY FUNCTIONS
