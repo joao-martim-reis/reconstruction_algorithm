@@ -38,6 +38,8 @@ def setup_geometry(img_shape, pixel_size, DSD, DSO, shift_pixels, total_angle,
     
     # Calculate voxel size
     magnification = DSD / DSO 
+    focal_spot_size = 0.035  # mm, typical value
+    Penumbra = focal_spot_size * (DSD - DSO) / DSO
     voxel_size_base = pixel_size / magnification
     voxel_size = voxel_size_base * voxel_ratio
     

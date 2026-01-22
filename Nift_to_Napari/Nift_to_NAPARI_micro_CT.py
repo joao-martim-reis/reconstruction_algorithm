@@ -53,5 +53,5 @@ def main(nift_folder):
 
 if __name__ == "__main__":
 
-    nift_input = r"C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift\Versao1_Normalizacao_errada\MAIN_TIGRE_FDK_CROP_Phantom_800_1_20_jan_10h36\Phantom_800_1.nii"
+    nift_input = r"D:\microCT\CT_Mineralizada_suspensa_2026-01-12_14h44_10um.nii"
     main(nift_input)

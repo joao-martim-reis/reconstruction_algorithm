@@ -12,9 +12,10 @@ from matplotlib.widgets import Slider, Button
 from datetime import datetime
 
 
-from geometry_reconstruction import setup_geometry
+# VOXEL-SIZE-FIRST APPROACH: Import from voxel-size geometry module
+from geometry_reconstruction_voxel_size import setup_geometry
 from crop_projections import select_crop_region, apply_crop_to_projections
-from data_processing_crop import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
+from FDK_reduce_memory.data_processing_FDK_3D import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
 from export_volumes import export_volume_to_nii, export_volume_HU
 from napari_filters import interactive_filter_viewer
 
@@ -90,6 +91,8 @@ def downsample_block_mean_pad(proj, f):
     3. Computes the mean value across each block, replacing f×f pixels with 1
     4. Preserves all angle dimensions without modification
     
+    IMPORTANT: Downsampling increases effective pixel size by factor f
+    This REDUCES the maximum achievable resolution (Nyquist limit increases)
     """
     H, W, A = proj.shape # Height, Width, Angles
     
@@ -114,6 +117,12 @@ def main(tiff_folder, configurations, output_folder=None):
     """
     Main FDK reconstruction pipeline with memory-efficient cropping workflow.
     
+    *** VOXEL-SIZE-FIRST VERSION ***
+    This version uses VOXEL SIZE as the primary input parameter instead of PIXEL SIZE.
+    This makes it easier to compare with commercial micro-CT systems and published papers.
+    
+    Key difference: CONFIG uses 'voxel_size' (in μm) instead of 'pixel_size' (in mm)
+    
 
     PHASE 1: Data Loading & Preprocessing
         - Load raw projections from TIFF files
@@ -127,7 +136,8 @@ def main(tiff_folder, configurations, output_folder=None):
         - Optional: Downsample for faster reconstruction
     
     PHASE 3: Geometry & Reconstruction
-        - Setup TIGRE geometry with crop-adjusted parameters
+        - Setup TIGRE geometry with VOXEL SIZE as primary input
+        - Calculate required pixel size from desired voxel size
         - Execute FDK algorithm with filtered backprojection
     
     PHASE 4: Post-Processing & Export
@@ -186,42 +196,52 @@ def main(tiff_folder, configurations, output_folder=None):
     gc.collect()
     
     # Step 2.4: Optional downsampling (applied AFTER crop for maximum efficiency)
-    if configurations['downsample'] > 1:
-        f = configurations['downsample']
+    # NOTE: Downsampling affects achievable resolution - see geometry_reconstruction_voxel_size.py
+    f = configurations['downsample']  # Get downsampling factor
+    
+    if f > 1:
         print(f"Downsampling by factor {f}x...")
+        print(f"      NOTE: This will REDUCE maximum achievable resolution")
         projections_final = downsample_block_mean_pad(projections_norm, f).astype(np.float32)
-        pixel_size = configurations['pixel_size'] * f
         print(f"      Final shape: {projections_final.shape}")
         
         del projections_norm
         gc.collect()
     else:
         projections_final = projections_norm
-        pixel_size = configurations['pixel_size']
     
     
     # PHASE 3: GEOMETRY SETUP & RECONSTRUCTION
    
     print("\n" + "="*70)
-    print("PHASE 3: GEOMETRY SETUP & RECONSTRUCTION")
+    print("PHASE 3: GEOMETRY SETUP & RECONSTRUCTION (VOXEL-SIZE-FIRST)")
     print("="*70)
     
     # Step 3.1: Calculate detector shift (adjusted for downsampling factor)
     calibrated_shift_px = configurations['calibrated_shift_px']
-    shift_val = calibrated_shift_px / configurations['downsample']
+    shift_val = calibrated_shift_px / f
     print(f" Detector shift calculated: {shift_val:.3f} pixels")
     
-    # Step 3.2: Setup TIGRE geometry
+    # Step 3.2: Adjust voxel size for downsampling
+    # CRITICAL: Downsampling increases effective voxel size
+    # Example: voxel_size = 20 μm, downsample = 4 → effective_voxel_size = 80 μm
+    # This matches pixel-size-first approach: pixel_size = configurations['pixel_size'] * f
+    effective_voxel_size = configurations['voxel_size'] * f
+    print(f" Voxel size adjustment: {configurations['voxel_size']:.2f} μm × {f} = {effective_voxel_size:.2f} μm")
+    
+    # Step 3.3: Setup TIGRE geometry with ADJUSTED voxel size
+    # The voxel_size entering setup_geometry is already adjusted for downsampling
+    # Inside setup_geometry: required_pixel_size = voxel_size × magnification (simple!)
     # (CRITICAL: crop_params adjusts detector offset for correct reconstruction center)
     geo, angles = setup_geometry(
         projections_final.shape, 
-        pixel_size, 
+        effective_voxel_size,  # ← Already adjusted for downsampling
         configurations['DSD'], 
         configurations['DSO'], 
         shift_val, 
         configurations['total_angle'], 
-        shift_sign=configurations['shift_sign'], 
-        voxel_ratio=configurations['voxel_ratio'],
+        shift_sign=configurations['shift_sign'],
+        downsample_factor=configurations['downsample'],  # ← For Nyquist limit calculation
         crop_params=crop_params  # ← Adjusts detector offset for cropped region
     )
     print(f"      Detector size: {geo.nDetector}")
@@ -314,29 +334,48 @@ def main(tiff_folder, configurations, output_folder=None):
 
 
 if __name__ == "__main__":
+
     CONFIG = {
-        'pixel_size': 0.05,
-        'DSD': 925,
-        'DSO': (925-32),
+        # PRIMARY INPUT: Desired voxel size in micrometers (μm)
+        'voxel_size': 26.8,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
+        
+        # Geometry parameters 
+        'DSD': 457,  # Distance Source to Detector (mm)
+        'DSO': 246,  # Distance Source to Object (mm)
+        
+
+        # Downsampling reduces resolution but speeds up reconstruction
+        # NOTE: This affects maximum achievable resolution!
         'downsample': 4,
+        
+        # Acquisition parameters
         'total_angle': 2 * np.pi,
         'calibrated_shift_px': 5.12,
-        'shift_sign': 1,           
-        'filter_type': 'hann',
-        'voxel_ratio': 1,
+        'shift_sign': 1,
+        
+        # Reconstruction filter
+        'filter_type': 'hann',  # Options: 'ram-lak', 'shepp-logan', 'cosine', 'hamming', 'hann'
+        
+        # Output folders
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift',
-        'filtered_volumes_folder': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\Filtered_volumes.Nift'  # Custom path for filtered volumes
+        'filtered_volumes_folder': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\Filtered_volumes.Nift'
     }
     
 
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\marta_caixa_SiPM'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Mouse_PC'
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Laranja'
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Laranja'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Haste_perfeita\Try_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\PEIXE\PEIXE'
 
-    
 
+    # Análise de resultados
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\SDD_457+DOD_222'
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\45kv+0.45mA\Fantoma_agua_destilada'
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA'
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA+haste'
+
+    
     vol = main(folder, CONFIG, output_folder=CONFIG.get('output_folder_NiFT'))
