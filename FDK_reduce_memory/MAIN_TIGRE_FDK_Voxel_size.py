@@ -12,10 +12,9 @@ from matplotlib.widgets import Slider, Button
 from datetime import datetime
 
 
-# VOXEL-SIZE-FIRST APPROACH: Import from voxel-size geometry module
-from geometry_reconstruction_voxel_size import setup_geometry
+from geometry_reconstruction_Voxel_size import setup_geometry
 from crop_projections import select_crop_region, apply_crop_to_projections
-from FDK_reduce_memory.data_processing_FDK_3D import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
+from data_processing_FDK_3D import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
 from export_volumes import export_volume_to_nii, export_volume_HU
 from napari_filters import interactive_filter_viewer
 
@@ -337,16 +336,15 @@ if __name__ == "__main__":
 
     CONFIG = {
         # PRIMARY INPUT: Desired voxel size in micrometers (μm)
-        'voxel_size': 26.8,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
+        'voxel_size': 22,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
         
         # Geometry parameters 
         'DSD': 457,  # Distance Source to Detector (mm)
-        'DSO': 246,  # Distance Source to Object (mm)
+        'DSO': 211,  # Distance Source to Object (mm)
         
-
         # Downsampling reduces resolution but speeds up reconstruction
         # NOTE: This affects maximum achievable resolution!
-        'downsample': 4,
+        'downsample': 2,
         
         # Acquisition parameters
         'total_angle': 2 * np.pi,
@@ -362,7 +360,7 @@ if __name__ == "__main__":
     }
     
 
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\marta_caixa_SiPM'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Mouse_PC'
@@ -372,8 +370,8 @@ if __name__ == "__main__":
 
 
     # Análise de resultados
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\SDD_457+DOD_222'
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\45kv+0.45mA\Fantoma_agua_destilada'
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern' #bar pattern
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Fantoma_agua' #agua
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA+haste'
 

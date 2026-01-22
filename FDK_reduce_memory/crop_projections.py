@@ -7,12 +7,14 @@ def select_crop_region(first_projection):
     """
     Interactive interface to select crop region on RAW projections (before normalization).
     - LEFT CLICK: Define vertical line → crop width (symmetric around center)
-    - RIGHT CLICK: Define horizontal line → crop height (from top to clicked line)
+    - RIGHT CLICK (1st): Define TOP horizontal line
+    - RIGHT CLICK (2nd): Define BOTTOM horizontal line
     
     """
-    print("--> [4/5] Select crop region on first projection...")
+    print("--> Select crop region on first projection...")
     print("    1. LEFT CLICK → define VERTICAL line (symmetric crop around center)")
-    print("    2. RIGHT CLICK → define HORIZONTAL line (crop from top to that line)")
+    print("    2. RIGHT CLICK (1st) → TOP horizontal line")
+    print("    3. RIGHT CLICK (2nd) → BOTTOM horizontal line")
 
     
     height, width = first_projection.shape
@@ -20,8 +22,9 @@ def select_crop_region(first_projection):
     
     # Selection state
     crop_state = {
-        'vertical_line': None,   # Distance from center (in pixels)
-        'horizontal_line': None  # Horizontal line (row index)
+        'vertical_line': None,    # Distance from center (in pixels)
+        'horizontal_line_top': None,     # Top row
+        'horizontal_line_bottom': None   # Bottom row
     }
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
@@ -45,7 +48,8 @@ def select_crop_region(first_projection):
     # Guide lines
     vline_left = ax1.axvline(x=0, color='cyan', linestyle='--', linewidth=2, visible=False)
     vline_right = ax1.axvline(x=width, color='cyan', linestyle='--', linewidth=2, visible=False)
-    hline = ax1.axhline(y=0, color='yellow', linestyle='--', linewidth=2, visible=False)
+    hline_top = ax1.axhline(y=0, color='yellow', linestyle='--', linewidth=2, visible=False, label='Top')
+    hline_bottom = ax1.axhline(y=height, color='orange', linestyle='--', linewidth=2, visible=False, label='Bottom')
     center_line = ax1.axvline(x=center_col, color='red', linestyle=':', linewidth=1, alpha=0.5)
     
     info_text = ax1.text(0.02, 0.98, '', transform=ax1.transAxes, 
@@ -54,13 +58,16 @@ def select_crop_region(first_projection):
     
     def update_preview():
         """Update crop preview"""
-        if crop_state['vertical_line'] is not None and crop_state['horizontal_line'] is not None:
+        if (crop_state['vertical_line'] is not None and 
+            crop_state['horizontal_line_top'] is not None and 
+            crop_state['horizontal_line_bottom'] is not None):
+            
             dist = crop_state['vertical_line']
-            row_end = crop_state['horizontal_line']
+            row_start = crop_state['horizontal_line_top']
+            row_end = crop_state['horizontal_line_bottom']
             
             col_start = max(0, center_col - dist)
             col_end = min(width, center_col + dist)
-            row_start = 0
             
             cropped = first_projection[row_start:row_end, col_start:col_end]
             im2.set_data(cropped)
@@ -73,7 +80,7 @@ def select_crop_region(first_projection):
             im2.set_extent([0, width, height, 0])
             ax2.set_xlim(0, width)
             ax2.set_ylim(height, 0)
-            ax2.set_title("Crop Preview (select both lines)", fontsize=12)
+            ax2.set_title("Crop Preview (select all lines)", fontsize=12)
         
         fig.canvas.draw()
     
@@ -98,22 +105,48 @@ def select_crop_region(first_projection):
             vline_right.set_visible(True)
             
             width_crop = 2 * crop_state['vertical_line']
+            h_top = crop_state['horizontal_line_top']
+            h_bottom = crop_state['horizontal_line_bottom']
+            h_status = f"Top: {h_top if h_top else 'Not set'}, Bottom: {h_bottom if h_bottom else 'Not set'}"
             info_text.set_text(f"Vertical: ±{crop_state['vertical_line']} px from center\n"
                              f"Width: {width_crop} px\n"
-                             f"Horizontal: {'SELECTED' if crop_state['horizontal_line'] else 'Not selected'}")
+                             f"Horizontal: {h_status}")
         
-        # Right button (3) → HORIZONTAL line
+        # Right button (3) → HORIZONTAL lines (first = top, second = bottom)
         elif event.button == 3:
-            # Clique HORIZONTAL → define altura (do topo até a linha)
-            crop_state['horizontal_line'] = int(y_click)
+            y_click_int = int(y_click)
             
-            hline.set_ydata([crop_state['horizontal_line'], crop_state['horizontal_line']])
-            hline.set_visible(True)
+            # If top not set, set top line
+            if crop_state['horizontal_line_top'] is None:
+                crop_state['horizontal_line_top'] = y_click_int
+                hline_top.set_ydata([y_click_int, y_click_int])
+                hline_top.set_visible(True)
+                info_text.set_text(f"Top line: {y_click_int} px\nBottom line: Not set\nVertical: {'SELECTED' if crop_state['vertical_line'] else 'Not selected'}")
             
-            height_crop = crop_state['horizontal_line']
-            info_text.set_text(f"Horizontal: {crop_state['horizontal_line']} px from top\n"
-                             f"Height: {height_crop} px\n"
-                             f"Vertical: {'SELECTED' if crop_state['vertical_line'] else 'Not selected'}")
+            # If top is set but bottom not, set bottom line
+            elif crop_state['horizontal_line_bottom'] is None:
+                crop_state['horizontal_line_bottom'] = y_click_int
+                hline_bottom.set_ydata([y_click_int, y_click_int])
+                hline_bottom.set_visible(True)
+                
+                # Ensure top < bottom
+                if crop_state['horizontal_line_top'] > crop_state['horizontal_line_bottom']:
+                    crop_state['horizontal_line_top'], crop_state['horizontal_line_bottom'] = crop_state['horizontal_line_bottom'], crop_state['horizontal_line_top']
+                    hline_top.set_ydata([crop_state['horizontal_line_top'], crop_state['horizontal_line_top']])
+                    hline_bottom.set_ydata([crop_state['horizontal_line_bottom'], crop_state['horizontal_line_bottom']])
+                
+                height_crop = crop_state['horizontal_line_bottom'] - crop_state['horizontal_line_top']
+                info_text.set_text(f"Top: {crop_state['horizontal_line_top']} px, Bottom: {crop_state['horizontal_line_bottom']} px\n"
+                                 f"Height: {height_crop} px\n"
+                                 f"Vertical: {'SELECTED' if crop_state['vertical_line'] else 'Not selected'}")
+            
+            # Both set, allow resetting by clicking again
+            else:
+                crop_state['horizontal_line_top'] = y_click_int
+                crop_state['horizontal_line_bottom'] = None
+                hline_top.set_ydata([y_click_int, y_click_int])
+                hline_bottom.set_visible(False)
+                info_text.set_text(f"Top line: {y_click_int} px (reset - click again for bottom)\nBottom line: Not set\nVertical: {'SELECTED' if crop_state['vertical_line'] else 'Not selected'}")
         
         update_preview()
     
@@ -130,15 +163,18 @@ def select_crop_region(first_projection):
     plt.show(block=True)
     
     # Valida e retorna parâmetros de crop
-    if crop_state['vertical_line'] is None or crop_state['horizontal_line'] is None:
+    if (crop_state['vertical_line'] is None or 
+        crop_state['horizontal_line_top'] is None or 
+        crop_state['horizontal_line_bottom'] is None):
         print("    WARNING: Crop not fully defined. Using full image.")
         return None
     
     dist = crop_state['vertical_line']
-    row_end = crop_state['horizontal_line']
+    row_start = crop_state['horizontal_line_top']
+    row_end = crop_state['horizontal_line_bottom']
     
     crop_params = {
-        'row_start': 0,
+        'row_start': row_start,
         'row_end': row_end,
         'col_start': max(0, center_col - dist),
         'col_end': min(width, center_col + dist),
@@ -157,10 +193,10 @@ def apply_crop_to_projections(projections, crop_params):
     
     """
     if crop_params is None:
-        print("--> [5/5] No crop applied (using full projections)")
+        print("--> No crop applied (using full projections)")
         return projections
     
-    print("--> [5/5] Applying crop to all projections...")
+    print("--> Applying crop to all projections...")
     
     rs = crop_params['row_start']
     re = crop_params['row_end']

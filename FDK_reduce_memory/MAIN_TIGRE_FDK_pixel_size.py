@@ -12,9 +12,9 @@ from matplotlib.widgets import Slider, Button
 from datetime import datetime
 
 
-from FDK_reduce_memory.geometry_reconstruction_pixel_size import setup_geometry
+from geometry_reconstruction_pixel_size import setup_geometry
 from crop_projections import select_crop_region, apply_crop_to_projections
-from FDK_reduce_memory.data_processing_FDK_3D import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
+from data_processing_FDK_3D import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
 from export_volumes import export_volume_to_nii, export_volume_HU
 from napari_filters import interactive_filter_viewer
 
@@ -316,11 +316,15 @@ def main(tiff_folder, configurations, output_folder=None):
 if __name__ == "__main__":
     CONFIG = {
         'pixel_size': 0.05,
+
+        #DSD means Distance Source to Detector
+        #DSO means Distance Source to Object
+        
         'DSD': 457,
-        'DSO': 246,
+        'DSO': 235,
         #'DSD': 925,
         #'DSO': (925-32),
-        'downsample': 4,
+        'downsample': 2,
         'total_angle': 2 * np.pi,
         'calibrated_shift_px': 5.12,
         'shift_sign': 1,           
@@ -341,9 +345,9 @@ if __name__ == "__main__":
 
 
     # Análise de resultados
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\SDD_457+DOD_222'
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Bar_pattern'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\45kv+0.45mA\Fantoma_agua_destilada'
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA'
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA+haste'
 
     

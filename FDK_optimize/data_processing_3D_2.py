@@ -6,7 +6,7 @@ from matplotlib.widgets import RectangleSelector, Button
 import re
 
 def load_images(tiff_folder):
-    print(f"--> [1/5] Loading images from: {tiff_folder}")
+    print(f"--> Loading images from: {tiff_folder}")
     
     if not os.path.exists(tiff_folder):
         print(f"Error: Folder does not exist.")
@@ -45,7 +45,7 @@ def load_images(tiff_folder):
 
 
 def generate_collapsed_sinogram(projections):
-    print("--> [2/5] Creating collapsed sinogram (sum projection)...")
+    print("--> Creating collapsed sinogram (sum projection)...")
     sino_sum = np.sum(projections, axis=0)
     return sino_sum
 
@@ -55,7 +55,7 @@ def selecionar_roi_I0(sino_raw):
     Interface simplificada para selecionar apenas a ROI de background (I0) para normalização.
     O shift é obtido da calibração prévia.
     """
-    print("--> [3/5] Select I0 ROI for normalization...")
+    print("--> Select I0 ROI for normalization...")
     
     roi_background = [None]
     fig, ax = plt.subplots(figsize=(14, 8)) 
