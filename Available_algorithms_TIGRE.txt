@@ -10,3 +10,19 @@ algorithm = ['ab_gmres', 'absolute_import', 'art_family_algorithms', 'asd_pocs',
 
 volume = algs.[algorithm](...........................)
 
+
+
+# IMPLEMENTATION STATUS:
+# ✓ FDK - Implemented in: FDK_reduce_memory/, FDK_optimize/, FDK_artifacts/
+# ✓ FBP - Implemented in: FBP/
+# ✓ ITERATIVE (OS) - Implemented in: FDK_iteratives/
+#   Supported algorithms with presets:
+#   - ossart: Ordered Subset SART
+#   - ossart_tv: OSSART with Total Variation regularization
+#   - sirt: Simultaneous Iterative Reconstruction Technique
+#   - cgls: Conjugate Gradient Least Squares
+#   - sart: Simultaneous Algebraic Reconstruction Technique
+#   - os_asd_pocs: OS Adaptive Steepest Descent POCS
+#   - os_awasd_pocs: OS Adaptive-weighted ASD POCS
+#
+# See FDK_iteratives/README.md for detailed documentation and usage examples
