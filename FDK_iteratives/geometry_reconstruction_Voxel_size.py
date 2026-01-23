@@ -1,3 +1,9 @@
+# NOTE: This file is copied from FDK_reduce_memory/geometry_reconstruction_Voxel_size.py
+# Following the repository pattern where each reconstruction variant (FDK_reduce_memory, 
+# FDK_optimize, FDK_artifacts, FBP) maintains its own copy of helper modules.
+# This ensures each reconstruction pipeline is self-contained and modifications to one
+# variant don't affect others.
+
 import numpy as np
 import tigre
 

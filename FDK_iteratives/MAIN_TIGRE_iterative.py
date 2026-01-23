@@ -431,10 +431,11 @@ if __name__ == "__main__":
         # Example for automated HU conversion:
         # 'hu_conversion': {'water_value': 0.02, 'air_value': -0.001}
         
-        # Output folder
-        'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Image_reconstruction\reconstructed_volumes_Nift'
+        # Output folder (use absolute or relative path appropriate for your system)
+        'output_folder_NiFT': './output/reconstructed_volumes'
     }
     
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
+    # Example paths - adjust these to your data location
+    folder = './data/projections'  # Path to TIFF projection images
     
     vol = main(folder, CONFIG, output_folder=CONFIG.get('output_folder_NiFT'))
