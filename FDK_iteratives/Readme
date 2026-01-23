@@ -1,0 +1,300 @@
+# Iterative CT Reconstruction Algorithms - Selection Guide
+
+## Quick Reference Table
+
+| Phantom Type | Best Algorithm | Iterations | Key Parameters | Script to Use |
+|--------------|---------------|------------|----------------|---------------|
+| **PMMA** | SIRT or CGLS | 50-100 | None | `MAIN_TIGRE_iterative_basic.py` |
+| **PMMA + Metal Rod** | OSSART_TV | 40-60 | lambda=20-30, ng=25 | `MAIN_TIGRE_iterative_TV.py` |
+| **Water Phantom** | CGLS or SIRT | 50-100 | None | `MAIN_TIGRE_iterative_basic.py` |
+| **Bar Pattern** | CGLS or OSSART | 30-50 | blocksize=20 (OSSART) | `MAIN_TIGRE_iterative_basic.py` |
+
+---
+
+## Algorithm Categories
+
+### 1. BASIC ALGORITHMS (Fast, General Purpose)
+**Use `MAIN_TIGRE_iterative_basic.py`**
+
+#### **SIRT** (Simultaneous Iterative Reconstruction Technique)
+- **Best for:** General purpose, homogeneous materials (PMMA, water)
+- **Pros:** Stable, predictable, good noise reduction
+- **Cons:** Slower convergence than CGLS
+- **Typical iterations:** 50-100
+- **When to use:** Default choice for clean data without artifacts
+
+#### **CGLS** (Conjugate Gradient Least Squares)
+- **Best for:** Fast convergence, water phantoms, bar patterns
+- **Pros:** Fastest convergence, mathematically optimal
+- **Cons:** Can amplify noise if too many iterations
+- **Typical iterations:** 30-50
+- **When to use:** When you want quick, high-quality results
+
+#### **OSSART** (Ordered Subsets SART)
+- **Best for:** Fast preview, bar pattern phantoms
+- **Pros:** Very fast (uses subsets), good edge preservation
+- **Cons:** Needs tuning of blocksize parameter
+- **Typical iterations:** 20-40
+- **Parameters:** `blocksize=20` (number of projections per subset)
+- **When to use:** When reconstruction time is critical
+
+#### **LSQR / LSMR** (Least Squares QR/Minimal Residual)
+- **Best for:** Similar to CGLS, alternative optimization
+- **Pros:** Numerically stable, good for ill-conditioned problems
+- **Cons:** Slightly slower than CGLS
+- **Typical iterations:** 30-50
+- **When to use:** If CGLS gives numerical issues
+
+---
+
+### 2. TV-REGULARIZED ALGORITHMS (Artifact Reduction)
+**Use `MAIN_TIGRE_iterative_TV.py`**
+
+#### **OSSART_TV** (Ordered Subsets SART with Total Variation)
+- **Best for:** PMMA + metal rod, severe streak artifacts
+- **Pros:** Fast + artifact reduction, good balance
+- **Cons:** Requires tuning of lambda parameter
+- **Typical iterations:** 40-60
+- **Parameters:**
+  - `lambda=15-30`: TV regularization weight (higher = more smoothing)
+  - `ng=25`: Gradient descent iterations for TV
+  - `blocksize=20`: Projections per subset
+- **When to use:** **RECOMMENDED for metal artifacts**
+
+#### **SART_TV** (SART with Total Variation)
+- **Best for:** Very noisy data, moderate artifacts
+- **Pros:** Better artifact reduction than OSSART_TV
+- **Cons:** Much slower (no ordered subsets)
+- **Typical iterations:** 50-80
+- **Parameters:**
+  - `lambda=10-20`: TV weight
+  - `ng=25`: TV iterations
+- **When to use:** When OSSART_TV doesn't remove enough artifacts
+
+#### **ASD_POCS** (Adaptive Steepest Descent POCS)
+- **Best for:** Extreme artifacts, very incomplete data
+- **Pros:** Excellent artifact suppression, handles sparse data
+- **Cons:** Very slow, needs careful parameter tuning
+- **Typical iterations:** 30-50
+- **Parameters:**
+  - `alpha=0.001-0.005`: TV descent step (lower = more cautious)
+  - `epsilon=0.01-0.1`: Data fidelity tolerance
+  - `ng=25`: TV iterations
+- **When to use:** Last resort for extremely challenging cases
+
+#### **AWASD_POCS** (Adaptive Weighted ASD_POCS)
+- **Best for:** Similar to ASD_POCS with adaptive weighting
+- **Pros:** Better convergence than ASD_POCS
+- **Cons:** Very slow
+- **Typical iterations:** 30-50
+- **When to use:** If ASD_POCS converges too slowly
+
+---
+
+## Phantom-Specific Recommendations
+
+### PMMA Phantom
+```python
+# Simple, homogeneous material - use basic algorithms
+CONFIG = {
+    'algorithm': 'SIRT',    # or 'CGLS' for faster
+    'iterations': 50,       # 50-100 typical
+}
+```
+**Why:** No artifacts, homogeneous material → simple algorithms work perfectly
+
+---
+
+### PMMA + Metal Rod
+```python
+# Severe metal artifacts - use TV regularization
+CONFIG = {
+    'algorithm': 'OSSART_TV',
+    'iterations': 50,
+    'ossart_blocksize': 20,
+    'tv_lambda': 20.0,      # Adjust 15-30 based on artifact severity
+    'tv_ng': 25,
+}
+```
+**Why:** Metal causes severe streak artifacts → TV regularization essential
+
+---
+
+### Water Phantom
+```python
+# Low contrast, need gentle reconstruction
+CONFIG = {
+    'algorithm': 'CGLS',    # or 'SIRT'
+    'iterations': 60,       # 50-100 typical
+}
+```
+**Why:** Low attenuation, subtle features → avoid over-regularization
+
+---
+
+### Bar Pattern Phantom
+```python
+# Need sharp edges for resolution measurement
+CONFIG = {
+    'algorithm': 'CGLS',    # or 'OSSART' for faster
+    'iterations': 40,       # 30-50 typical
+    'ossart_blocksize': 20, # Only if using OSSART
+}
+```
+**Why:** Sharp edges critical → avoid TV regularization (blurs edges)
+
+---
+
+## Parameter Tuning Guide
+
+### Number of Iterations
+- **Too few:** Blurry, incomplete reconstruction
+- **Too many:** Noise amplification, overfitting
+- **Sweet spot:** When visual quality stops improving
+
+**Rule of thumb:**
+- CGLS/LSQR: 30-50 iterations
+- SIRT/SART: 50-100 iterations
+- OSSART: 20-40 iterations (faster due to subsets)
+- TV algorithms: 40-80 iterations (slower convergence)
+
+### TV Lambda Parameter (OSSART_TV, SART_TV)
+- **Low (5-10):** Minimal smoothing, preserves details, some artifacts remain
+- **Medium (15-25):** Balanced, **recommended for metal artifacts**
+- **High (30-50):** Strong smoothing, may lose small features
+
+**How to tune:**
+1. Start with lambda=15
+2. If artifacts remain → increase to 20-30
+3. If losing too much detail → decrease to 10-15
+
+### TV Alpha Parameter (ASD_POCS, AWASD_POCS)
+- **Low (0.001-0.002):** Cautious, slower convergence, safer
+- **Medium (0.002-0.005):** Balanced (typical)
+- **High (0.005-0.01):** Aggressive, faster but may overshoot
+
+### Blocksize (OSSART, OSSART_TV)
+- **Small (10-15):** More accurate, slower
+- **Medium (20-30):** Balanced (recommended)
+- **Large (40-60):** Faster, less accurate
+
+---
+
+## Comparison: FDK vs Iterative
+
+| Aspect | FDK | SIRT/CGLS | OSSART_TV |
+|--------|-----|-----------|-----------|
+| **Speed** | Fastest (seconds) | Medium (minutes) | Slower (5-15 min) |
+| **Metal artifacts** | Severe | Some reduction | Excellent reduction |
+| **Noise** | Moderate | Good suppression | Best suppression |
+| **Edge sharpness** | Good | Good | Slightly softer |
+| **Best use** | Clean data, quick preview | General purpose | Challenging data |
+
+---
+
+## Workflow Recommendation
+
+### Step 1: Start with FDK (current pipeline)
+```bash
+python MAIN_TIGRE_FDK_Voxel_size.py
+```
+- Quick preview
+- Assess data quality
+- Identify artifacts
+
+### Step 2: Choose iterative algorithm
+
+**If FDK looks good (no severe artifacts):**
+```bash
+python MAIN_TIGRE_iterative_basic.py
+# Use CGLS or SIRT for cleaner results
+```
+
+**If FDK has metal/streak artifacts:**
+```bash
+python MAIN_TIGRE_iterative_TV.py
+# Use OSSART_TV with lambda=20
+```
+
+### Step 3: Fine-tune parameters
+- Adjust iterations until convergence
+- Tune TV lambda if using TV algorithms
+- Compare different algorithms side-by-side
+
+---
+
+## Expected Reconstruction Times
+(Based on typical micro-CT volume ~500³ voxels, 800 projections)
+
+| Algorithm | Time (GPU) | Time (CPU) |
+|-----------|------------|------------|
+| FDK | ~5 sec | ~30 sec |
+| CGLS (50 iter) | ~2 min | ~15 min |
+| SIRT (50 iter) | ~2 min | ~15 min |
+| OSSART (30 iter) | ~1 min | ~8 min |
+| OSSART_TV (50 iter) | ~5 min | ~30 min |
+| SART_TV (50 iter) | ~8 min | ~45 min |
+| ASD_POCS (40 iter) | ~10 min | ~60 min |
+
+**Note:** Times scale with volume size and number of projections
+
+---
+
+## Troubleshooting
+
+### Problem: Reconstruction is too noisy
+**Solution:**
+- Increase iterations (SIRT, CGLS)
+- Use TV regularization (OSSART_TV with lambda=15-25)
+- Check I0 normalization is correct
+
+### Problem: Reconstruction is too blurry
+**Solution:**
+- Decrease iterations
+- Lower TV lambda (if using TV algorithms)
+- Try CGLS instead of SIRT
+
+### Problem: Metal artifacts remain
+**Solution:**
+- Switch to `MAIN_TIGRE_iterative_TV.py`
+- Use OSSART_TV with lambda=20-30
+- Increase iterations to 60-80
+- Try ASD_POCS for extreme cases
+
+### Problem: Reconstruction takes too long
+**Solution:**
+- Use OSSART instead of SART (10x faster)
+- Reduce iterations
+- Increase downsampling factor
+- Use smaller crop region
+
+### Problem: Edges are not sharp enough
+**Solution:**
+- Use CGLS or OSSART (avoid TV algorithms)
+- Reduce TV lambda if using TV
+- Decrease iterations slightly
+
+---
+
+## Summary: What Algorithm Should I Use?
+
+```
+┌─────────────────────────────────────────┐
+│  Do you have metal in your sample?      │
+└─────────────┬───────────────────────────┘
+              │
+       ┌──────┴──────┐
+       │             │
+      YES           NO
+       │             │
+       │             └─────> MAIN_TIGRE_iterative_basic.py
+       │                     Algorithm: CGLS or SIRT
+       │                     Iterations: 50
+       │
+       └─────> MAIN_TIGRE_iterative_TV.py
+               Algorithm: OSSART_TV
+               Iterations: 50
+               lambda: 20
+```
+
+**Default recommendation:** Start with **CGLS (50 iterations)** for all phantoms, then switch to **OSSART_TV (lambda=20)** only if you see artifacts.
