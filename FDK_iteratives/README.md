@@ -161,6 +161,36 @@ CONFIG = {
 }
 ```
 
+### Automated/Batch Processing
+
+For scripted workflows without user interaction:
+
+```python
+CONFIG = {
+    'algorithm': 'cgls',
+    'algorithm_params': {'niter': 30},
+    
+    # ... geometry parameters ...
+    
+    # Automation controls
+    'auto_export': True,        # Skip export prompt, auto-save
+    'show_napari': False,       # Skip visualization for batch mode
+    'hu_conversion': {          # Auto HU conversion with preset values
+        'water_value': 0.020,
+        'air_value': -0.001
+    },
+}
+
+# Can now run in a loop without user interaction
+for folder in data_folders:
+    volume = main(folder, CONFIG)
+```
+
+**Automation Options:**
+- `auto_export`: `True` = auto export, `False` = skip, `None` = prompt user (default)
+- `show_napari`: `True` = show viewer (default), `False` = skip for batch processing
+- `hu_conversion`: Dict with `{'water_value': X, 'air_value': Y}` or `None` to prompt (default)
+
 ## Parameter Tuning Guide
 
 ### Number of Iterations (`niter`)
@@ -206,6 +236,12 @@ Approximate relative speeds (compared to FDK = 1x):
 - OSSART: 20-40x slower (depends on subset size)
 - OSSART-TV: 30-60x slower (TV adds overhead)
 - OS-ASD-POCS: 40-80x slower
+
+**Note:** These are approximate relative values that can vary significantly based on:
+- Hardware specifications (GPU model, VRAM, CPU)
+- Data size (number of projections, detector resolution, volume size)
+- Algorithm parameters (iterations, subset size, regularization steps)
+- System configuration (CUDA version, driver optimizations)
 
 **Tips for faster reconstruction:**
 - Increase `blocksize` (fewer subsets = fewer updates)

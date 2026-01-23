@@ -312,8 +312,26 @@ def main(tiff_folder, configurations, output_folder=None):
     print(f"\nRunning {preset['name']} algorithm...")
     print(f"This may take several minutes depending on parameters...")
     
-    volume = algorithm_func(input_data, geo, angles, **algorithm_params)
-    print_volume_info(volume, geo)
+    try:
+        volume = algorithm_func(input_data, geo, angles, **algorithm_params)
+        print_volume_info(volume, geo)
+    except Exception as e:
+        print(f"\n{'='*70}")
+        print(f"ERROR: Reconstruction failed!")
+        print(f"{'='*70}")
+        print(f"Algorithm: {preset['name']}")
+        print(f"Error message: {str(e)}")
+        print(f"\nPossible causes:")
+        print(f"  - Invalid algorithm parameters (check niter, blocksize, alpha, etc.)")
+        print(f"  - Insufficient GPU memory (try reducing volume size or using downsample)")
+        print(f"  - Geometry mismatch (verify DSD, DSO, detector size)")
+        print(f"  - Incompatible data format")
+        print(f"\nSuggestions:")
+        print(f"  - Increase 'downsample' parameter to reduce memory usage")
+        print(f"  - Reduce 'niter' parameter")
+        print(f"  - Check GPU memory with: tigre.utilities.gpu.getGpuIds()")
+        print(f"{'='*70}\n")
+        raise
     
     
     # PHASE 4: POST-PROCESSING & EXPORT
@@ -321,41 +339,57 @@ def main(tiff_folder, configurations, output_folder=None):
     print("PHASE 4: POST-PROCESSING & EXPORT")
     print("="*70)
     
-    # Optional NIfTI export
-    export_choice = input("\nDo you want to export the volume to .nii format? (y/n): ").strip().lower()
+    # NIfTI export - check config first, then prompt if not specified
+    auto_export = configurations.get('auto_export', None)
     nii_filepath = None
-    if export_choice == 'y':
+    
+    if auto_export is True or (auto_export is None and input("\nDo you want to export the volume to .nii format? (y/n): ").strip().lower() == 'y'):
         nii_filepath = export_volume_to_nii(volume, geo, tiff_folder, base_output=output_folder)
         print(f"Volume exported to NIfTI format")
     else:
         print(f"NIfTI export skipped")
     
-    # Open Napari to visualize
-    print("--> Opening Napari...")
-    viewer = napari.Viewer()
-    
-    ndim = volume.ndim 
-    if ndim == 2:
-        viewer.add_image(volume, scale=(geo.dVoxel[1], geo.dVoxel[2]))
-    elif ndim == 3:
-        viewer.add_image(volume, scale=(geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]))
+    # Napari visualization - check config first
+    show_napari = configurations.get('show_napari', True)
+    if show_napari:
+        print("--> Opening Napari...")
+        viewer = napari.Viewer()
+        
+        ndim = volume.ndim 
+        if ndim == 2:
+            viewer.add_image(volume, scale=(geo.dVoxel[1], geo.dVoxel[2]))
+        elif ndim == 3:
+            viewer.add_image(volume, scale=(geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]))
+        else:
+            viewer.add_image(volume)
+        
+        napari.run()
     else:
-        viewer.add_image(volume)
+        print("Napari visualization skipped (show_napari=False in config)")
     
-    napari.run()
-    
-    # Optional HU conversion
-    if export_choice == 'y' and nii_filepath is not None:
-        hu_choice = input("\nDo you want to also export in Hounsfield Units (HU)? (y/n): ").strip().lower()
-        if hu_choice == 'y':
-            print("\n" + "="*60)
-            print("  HU CONVERSION SETUP")
-            print("="*60)
-            print("Please provide the gray scale values measured from the reconstruction:")
-            water_val = float(input("  Enter gray scale value for WATER: "))
-            air_val = float(input("  Enter gray scale value for AIR: "))
-            
-            export_volume_HU(nii_filepath, volume, water_val, air_val)
+    # HU conversion - check config first, then prompt if not specified
+    if nii_filepath is not None:
+        hu_values = configurations.get('hu_conversion', None)
+        
+        if hu_values is not None and isinstance(hu_values, dict):
+            # Automatic HU conversion with values from config
+            water_val = hu_values.get('water_value')
+            air_val = hu_values.get('air_value')
+            if water_val is not None and air_val is not None:
+                print(f"\nApplying HU conversion (water={water_val}, air={air_val})")
+                export_volume_HU(nii_filepath, volume, water_val, air_val)
+        elif hu_values is None:
+            # Prompt user for HU conversion
+            hu_choice = input("\nDo you want to also export in Hounsfield Units (HU)? (y/n): ").strip().lower()
+            if hu_choice == 'y':
+                print("\n" + "="*60)
+                print("  HU CONVERSION SETUP")
+                print("="*60)
+                print("Please provide the gray scale values measured from the reconstruction:")
+                water_val = float(input("  Enter gray scale value for WATER: "))
+                air_val = float(input("  Enter gray scale value for AIR: "))
+                
+                export_volume_HU(nii_filepath, volume, water_val, air_val)
     
     return volume
 
@@ -390,7 +424,14 @@ if __name__ == "__main__":
         # Preprocessing
         'downsample': 2,        # Downsampling factor (1 = no downsampling)
         
-        # Output
+        # Output and visualization control (for automated/scripted usage)
+        'auto_export': None,    # True = auto export, False = skip, None = prompt user
+        'show_napari': True,    # True = show Napari viewer, False = skip (useful for batch processing)
+        'hu_conversion': None,  # Dict with {'water_value': X, 'air_value': Y} or None to prompt
+        # Example for automated HU conversion:
+        # 'hu_conversion': {'water_value': 0.02, 'air_value': -0.001}
+        
+        # Output folder
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Image_reconstruction\reconstructed_volumes_Nift'
     }
     
