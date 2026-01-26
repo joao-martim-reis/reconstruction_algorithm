@@ -112,11 +112,11 @@ def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle,
     # Detector size after crop (if applied)
     geo.nDetector = np.array([height, width])
     # Detector pixel spacing: use required_pixel_size (already correct for downsampling)
-    geo.dDetector = np.array([required_pixel_size, required_pixel_size])
-    geo.sDetector = geo.nDetector * geo.dDetector
+    geo.dDetector = np.array([required_pixel_size, required_pixel_size]) # geo.dDetector is the physical size of each detector pixel in mm
+    geo.sDetector = geo.nDetector * geo.dDetector # physical size of the detector in mm
     
     # Voxel spacing: use voxel_size_mm directly (already adjusted for downsampling)
-    geo.dVoxel = np.array([voxel_size_mm, voxel_size_mm, voxel_size_mm])
+    geo.dVoxel = np.array([voxel_size_mm, voxel_size_mm, voxel_size_mm]) # is the physical size of each voxel in mm
     
     # Calculate number of voxels needed to cover the detector field of view
     geo.nVoxel = np.array([

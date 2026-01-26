@@ -284,12 +284,27 @@ def main(tiff_folder, configurations, output_folder=None):
         crop_params=crop_params
     )
     
-    print(f"Detector size: {geo.nDetector}")
-    print(f"Voxel size: {geo.dVoxel}")
+    # Validate and display geometry
+    print(f"\n{'='*70}")
+    print(f"GEOMETRY VALIDATION")
+    print(f"{'='*70}")
+    print(f"Detector dimensions (nDetector): {geo.nDetector}")
+    print(f"  - Type: {type(geo.nDetector)}")
+    print(f"  - Shape: {geo.nDetector.shape}")
+    print(f"  - Dtype: {geo.nDetector.dtype}")
+    print(f"  - Element [0]: {geo.nDetector[0]} (type: {type(geo.nDetector[0]).__name__})")
+    print(f"  - Element [1]: {geo.nDetector[1]} (type: {type(geo.nDetector[1]).__name__})")
+    print(f"Detector pixel size (dDetector): {geo.dDetector}")
+    print(f"Voxel size (dVoxel): {geo.dVoxel}")
     
     # Prepare data for TIGRE
-    print(f"Preparing data for TIGRE...")
+    print(f"\n{'='*70}")
+    print(f"DATA PREPARATION")
+    print(f"{'='*70}")
+    print(f"Input shape: {projections_final.shape} (H, W, N_angles)")
     input_data = np.transpose(projections_final, (2, 0, 1)).copy()
+    print(f"After transpose: {input_data.shape} (N_angles, H, W)")
+    print(f"Expected by TIGRE: ({len(angles)}, {geo.nDetector[0]}, {geo.nDetector[1]})")
     
     del projections_final
     gc.collect()
@@ -402,21 +417,19 @@ if __name__ == "__main__":
     # ALGORITHM SELECTION
     # ===================================================================
     # 
-    # OPTION 1: Choose algorithm directly
-    # ────────────────────────────────────────
-    # Uncomment one of the lines below to choose the algorithm:
+    #Choose algorithm directly
     
     # BASIC algorithms (no TV):
     #algorithm_config = get_algorithm_config('SIRT')       # Classic, balanced
-    #algorithm_config = get_algorithm_config('CGLS')       # Fast, good for details
+    algorithm_config = get_algorithm_config('CGLS')       # Fast, good for details
     #algorithm_config = get_algorithm_config('LSQR')       # Numerically stable
     #algorithm_config = get_algorithm_config('LSMR')       # Improved over LSQR
     #algorithm_config = get_algorithm_config('OSSART')     # Very fast (preview)
     #algorithm_config = get_algorithm_config('SART')       # Alternative to SIRT
     
     # TV-regularized algorithms (reduce artifacts):
-    algorithm_config = get_algorithm_config('OSSART_TV')  # RECOMMENDED for metal
-    #algorithm_config = get_algorithm_config('SART_TV')    # More precise than OSSART_TV
+    #algorithm_config = get_algorithm_config('OSSART_TV')  # RECOMMENDED for metal
+    algorithm_config = get_algorithm_config('SART_TV')    # More precise than OSSART_TV
     #algorithm_config = get_algorithm_config('ASD_POCS')   # Severe artifacts
     #algorithm_config = get_algorithm_config('AWASD_POCS') # Adaptive variant
     
@@ -471,7 +484,7 @@ if __name__ == "__main__":
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\45kv+0.45mA\Fantoma_agua_destilada'
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern'
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern' #bar pattern
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA+haste'
     
 

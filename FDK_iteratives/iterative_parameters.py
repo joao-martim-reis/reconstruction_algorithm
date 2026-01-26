@@ -53,7 +53,7 @@ ALGORITHM_CONFIGS = {
     # ─────────────────────────────────────────────────────────────────────────
     'CGLS': {
         'category': 'basic',
-        'iterations': 50,
+        'iterations': 120,
         'description': 'Conjugate gradient least squares. Fast convergence, good for fine details.',
         'best_for': 'Bar pattern, simple phantoms, when speed is desired',
         'params': {}
@@ -133,12 +133,12 @@ ALGORITHM_CONFIGS.update({
     # ─────────────────────────────────────────────────────────────────────────
     'SART_TV': {
         'category': 'tv',
-        'iterations': 60,
+        'iterations': 100,
         'description': 'SART with TV regularization. Slower than OSSART_TV but more precise.',
         'best_for': 'Noisy data when processing time is available',
         'params': {
-            'lmbda': 15.0,    # TV weight: increase = stronger smoothing | decrease = more detail
-            'ng': 25           # internal TV iterations
+            'lmbda': 10.0,    # TV weight: increase = stronger smoothing | decrease = more detail
+            'ng': 15           # internal TV iterations
         }
     },
     
@@ -147,7 +147,7 @@ ALGORITHM_CONFIGS.update({
     # ─────────────────────────────────────────────────────────────────────────
     'ASD_POCS': {
         'category': 'tv',
-        'iterations': 40,
+        'iterations': 120,
         'description': 'Adaptive steepest descent with TV. Good for severe artifacts.',
         'best_for': 'Severe artifacts, incomplete data',
         'params': {
@@ -162,7 +162,7 @@ ALGORITHM_CONFIGS.update({
     # ─────────────────────────────────────────────────────────────────────────
     'AWASD_POCS': {
         'category': 'tv',
-        'iterations': 40,
+        'iterations': 100,
         'description': 'Adaptive weighted ASD_POCS with automatic weight adjustment.',
         'best_for': 'Alternative to ASD_POCS with automatic adaptation',
         'params': {
