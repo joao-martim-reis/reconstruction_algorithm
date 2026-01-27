@@ -6,12 +6,12 @@ from datetime import datetime
 import os
 
 # ===== CONFIGURATION =====
-tif_path = "C:\\Users\\joaomartimreis\\Desktop\\Substack (70-130).tif"  # Path to TIF file
+tif_path = "C:\\Users\\joaomartimreis\\Desktop\\Joao_CT\\Volumes_reconstrucao\\reconstructed_volumes_Nift\\export_volumes_Fantoma_agua_26_jan_15h0\\Substack (70-110).tif"  # Path to TIF file
 output_folder = "C:\\Users\\joaomartimreis\\Desktop\\Joao_CT\\Pasta_Resultados\\FDK\\Excel_metricas"      # Folder to save Excel and graphs
 pixel_size_mm = 0.0  # Set 0 to use pixels, or enter size (e.g., 0.05 for 50µm)
 
 # ROI settings (in pixels)
-roi_radius = 25  # ROI circular radius in pixels
+roi_radius = 40  # ROI circular radius in pixels
 roi_height = 25   # number of slices for 3D analysis
 distance_from_center = 100  # distance of peripheral ROIs from center
 

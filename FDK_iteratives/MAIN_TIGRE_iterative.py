@@ -421,15 +421,15 @@ if __name__ == "__main__":
     
     # BASIC algorithms (no TV):
     #algorithm_config = get_algorithm_config('SIRT')       # Classic, balanced
-    algorithm_config = get_algorithm_config('CGLS')       # Fast, good for details
+    #algorithm_config = get_algorithm_config('CGLS')       # Fast, good for details
     #algorithm_config = get_algorithm_config('LSQR')       # Numerically stable
     #algorithm_config = get_algorithm_config('LSMR')       # Improved over LSQR
     #algorithm_config = get_algorithm_config('OSSART')     # Very fast (preview)
     #algorithm_config = get_algorithm_config('SART')       # Alternative to SIRT
     
     # TV-regularized algorithms (reduce artifacts):
-    #algorithm_config = get_algorithm_config('OSSART_TV')  # RECOMMENDED for metal
-    algorithm_config = get_algorithm_config('SART_TV')    # More precise than OSSART_TV
+    algorithm_config = get_algorithm_config('OSSART_TV')  # RECOMMENDED for metal
+    #algorithm_config = get_algorithm_config('SART_TV')    # More precise than OSSART_TV
     #algorithm_config = get_algorithm_config('ASD_POCS')   # Severe artifacts
     #algorithm_config = get_algorithm_config('AWASD_POCS') # Adaptive variant
     
@@ -484,7 +484,7 @@ if __name__ == "__main__":
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\45kv+0.45mA\Fantoma_agua_destilada'
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern' #bar pattern
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_v3' #bar pattern
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA+haste'
     
 

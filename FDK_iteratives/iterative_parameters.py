@@ -53,7 +53,7 @@ ALGORITHM_CONFIGS = {
     # ─────────────────────────────────────────────────────────────────────────
     'CGLS': {
         'category': 'basic',
-        'iterations': 120,
+        'iterations': 80,
         'description': 'Conjugate gradient least squares. Fast convergence, good for fine details.',
         'best_for': 'Bar pattern, simple phantoms, when speed is desired',
         'params': {}

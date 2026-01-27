@@ -336,7 +336,7 @@ if __name__ == "__main__":
 
     CONFIG = {
         # PRIMARY INPUT: Desired voxel size in micrometers (μm)
-        'voxel_size': 20,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
+        'voxel_size': 26,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
         
         # Geometry parameters 
         'DSD': 457,  # Distance Source to Detector (mm)
@@ -345,7 +345,7 @@ if __name__ == "__main__":
         
         # Downsampling reduces resolution but speeds up reconstruction
         # NOTE: This affects maximum achievable resolution!
-        'downsample': 3,
+        'downsample': 1,
         
         # Acquisition parameters
         'total_angle': 2 * np.pi,
@@ -371,8 +371,8 @@ if __name__ == "__main__":
 
 
     # Análise de resultados
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_v3' #bar pattern
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Fantoma_agua' #agua
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_v3' #bar pattern
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Fantoma_agua' #agua
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA+haste'
 

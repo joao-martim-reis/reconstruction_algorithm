@@ -7,8 +7,8 @@ from datetime import datetime
 import os
 
 # ===== CONFIGURATION =====
-tif_path = "C:\\Users\\joaomartimreis\\Desktop\\Substack (70-130).tif"  # Path to TIF file
-output_folder = "C:\\Users\\joaomartimreis\\Desktop\\Joao_CT\\Pasta_Resultados\\FDK\\Excel_metricas"
+tif_path = "C:\\Users\\joaomartimreis\\Desktop\\Joao_CT\\Volumes_reconstrucao\\reconstructed_volumes_Nift\\export_volumes_Fantoma_agua_26_jan_15h0\\Substack (70-110).tif"  # Path to TIF file
+output_folder = "C:\\Users\\joaomartimreis\\Desktop\\Joao_CT\\Pasta_Resultados\\FDK\\Excel_metricas"      # Folder to save Excel and graphs
 pixel_size_mm = 0.0
 
 # ROI settings
