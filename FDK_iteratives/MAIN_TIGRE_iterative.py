@@ -31,6 +31,7 @@ from crop_projections import select_crop_region, apply_crop_to_projections
 from data_processing_FDK_3D import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
 from export_volumes import export_volume_to_nii, export_volume_HU
 from napari_filters import interactive_filter_viewer
+from rotation_alignment import apply_rotation_to_projections
 
 # Import iterative parameters
 from iterative_parameters import (
@@ -218,6 +219,18 @@ def main(tiff_folder, configurations, output_folder=None):
     print("="*70)
     
     projections_raw = load_images(tiff_folder)
+    
+    # Safety check
+    if projections_raw is None:
+        raise ValueError(f"Failed to load projections from folder: {tiff_folder}")
+    
+    # Apply rotation correction (BEFORE cropping)
+    rotation_angle = configurations.get('rotation_angle', 0.0)
+    if rotation_angle != 0.0:
+        projections_raw = apply_rotation_to_projections(projections_raw, rotation_angle, order=3)
+    else:
+        print("No rotation applied (rotation_angle = 0)")
+    
     sino_raw = generate_collapsed_sinogram(projections_raw)
     roi_background = selecionar_roi_I0(sino_raw)
     mean_I0 = get_I0_from_roi(sino_raw, roi_background, projections_raw.shape[0])
@@ -406,6 +419,9 @@ if __name__ == "__main__":
         'total_angle': 2 * np.pi,  # Total rotation angle (radians)
         'calibrated_shift_px': 5.12,  # Detector shift (pixels)
         'shift_sign': 1,  # Sign of the shift (+1 or -1)
+        
+        # Rotation correction (positive=counterclockwise, negative=clockwise, 0=no rotation)
+        'rotation_angle': 0.0,
         
         # Output folders
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift',

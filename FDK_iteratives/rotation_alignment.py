@@ -1,5 +1,8 @@
 """
 Simple Manual Rotation Correction for CT Projections
+
+Applies a user-specified rotation angle to all projections to align the sample
+perpendicular to the detector.
 """
 
 import numpy as np
@@ -8,8 +11,12 @@ from scipy.ndimage import rotate
 
 def apply_rotation_to_projections(projections, angle, order=3):
     """
+    Rotates all projections by a specified angle.
     
     ROTATION MATRIX PARAMETERS EXPLAINED:
+    =====================================
+    
+    angle : float (degrees)
         - Rotation angle in DEGREES
         - POSITIVE values = counterclockwise rotation
         - NEGATIVE values = clockwise rotation
@@ -28,6 +35,24 @@ def apply_rotation_to_projections(projections, angle, order=3):
     - mode='constant': Fills empty corners with zero (black)
     - Rotation is applied around the image center
     
+    MEMORY EFFICIENCY:
+    - Processes ONE projection at a time (not the entire stack)
+    - Prevents memory overflow with large datasets
+    
+    Parameters:
+    -----------
+    projections : np.ndarray
+        Projection stack with shape (Height × Width × N_angles)
+    angle : float
+        Rotation angle in degrees
+        Positive = counterclockwise, Negative = clockwise
+    order : int, default=3
+        Interpolation order (0=nearest, 1=bilinear, 3=cubic)
+    
+    Returns:
+    --------
+    rotated_projections : np.ndarray
+        Rotated projection stack with same shape as input
     """
     
     # Safety check
@@ -36,6 +61,14 @@ def apply_rotation_to_projections(projections, angle, order=3):
     
     H, W, N = projections.shape
     rotated_projections = np.zeros_like(projections)
+    
+    print(f"\n{'='*60}")
+    print(f"APPLYING MANUAL ROTATION")
+    print(f"{'='*60}")
+    print(f"  Rotation angle: {angle:.3f}° {'(counterclockwise)' if angle > 0 else '(clockwise)'}")
+    print(f"  Number of projections: {N}")
+    print(f"  Interpolation: order={order} ({'cubic' if order==3 else 'bilinear' if order==1 else 'nearest'})")
+    print(f"  Processing...")
     
     # Apply rotation to each projection individually (memory efficient)
     for i in range(N):
@@ -49,7 +82,17 @@ def apply_rotation_to_projections(projections, angle, order=3):
         )
         
         # Progress update every 50 projections
+        if (i + 1) % 50 == 0:
+            print(f"    Progress: {i+1}/{N} projections")
+    
+    print(f"  ✓ Rotation complete!")
+    print(f"{'='*60}\n")
     
     return rotated_projections
 
 
+if __name__ == "__main__":
+    print("Manual Rotation Module")
+    print("\nUsage:")
+    print("  from rotation_alignment import apply_rotation_to_projections")
+    print("  projections_rotated = apply_rotation_to_projections(projections, angle=2.5)")

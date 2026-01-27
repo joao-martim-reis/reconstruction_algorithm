@@ -18,8 +18,8 @@ roi_height = 25
 # ===== LOAD IMAGES =====
 print("Loading image stack...")
 stack = tifffile.imread(tif_path)
-if stack.ndim == 2:
-    stack = stack[np.newaxis, :, :]
+if stack.ndim == 2: # Single slice case 
+    stack = stack[np.newaxis, :, :] #
 
 num_slices, height, width = stack.shape
 center_slice = num_slices // 2

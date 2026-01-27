@@ -17,6 +17,7 @@ from crop_projections import select_crop_region, apply_crop_to_projections
 from data_processing_FDK_3D import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
 from export_volumes import export_volume_to_nii, export_volume_HU
 from napari_filters import interactive_filter_viewer
+from rotation_alignment import apply_rotation_to_projections
 
 
 # Import HU conversion function
@@ -148,8 +149,19 @@ def main(tiff_folder, configurations, output_folder=None):
     
     # Step 1.1: Load raw TIFF projection images
     projections_raw = load_images(tiff_folder)
+    
+    # Safety check: ensure projections were loaded successfully
+    if projections_raw is None:
+        raise ValueError(f"Failed to load projections from folder: {tiff_folder}\nPlease check that the folder exists and contains TIFF images.")
 
-    # Step 1.2: Generate collapsed sinogram for I0 reference selection
+    # Step 1.2: Apply manual rotation correction 
+    rotation_angle = configurations.get('rotation_angle', 0.0) # Default no rotation
+    if rotation_angle != 0.0:
+        projections_raw = apply_rotation_to_projections(projections_raw, rotation_angle, order=3)
+    else:
+        print("No rotation applied (rotation_angle = 0)")
+
+    # Step 1.3: Generate collapsed sinogram for I0 reference selection
     sino_raw = generate_collapsed_sinogram(projections_raw)
     
     # Step 1.3: User selects background ROI and calculates mean I0 value
@@ -330,6 +342,10 @@ if __name__ == "__main__":
         'shift_sign': 1,           
         'filter_type': 'hann',  # Options: 'ram-lak', 'shepp-logan', 'cosine', 'hamming', 'hann'
         'voxel_ratio': 1,
+        
+        # Rotation correction (set angle in degrees: positive=counterclockwise, negative=clockwise, 0=no rotation)
+        'rotation_angle': 2,  # Example: 2.5 rotates 2.5° counterclockwise, -1.8 rotates 1.8° clockwise
+        
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift',
         'filtered_volumes_folder': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\Filtered_volumes.Nift'  # Custom path for filtered volumes
     }
