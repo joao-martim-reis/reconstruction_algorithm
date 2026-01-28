@@ -365,7 +365,7 @@ if __name__ == "__main__":
         'filter_type': 'hann',  # Options: 'ram-lak', 'shepp-logan', 'cosine', 'hamming', 'hann'
         
         # Rotation correction (set angle in degrees: positive=counterclockwise, negative=clockwise, 0=no rotation)
-        'rotation_angle': 2, 
+        'rotation_angle': 0.0, 
         
         # Output folders
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift',

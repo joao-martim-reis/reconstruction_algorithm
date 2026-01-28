@@ -413,7 +413,7 @@ if __name__ == "__main__":
         'DSO': 235,  # mm - Source to Object Distance
         
         # Downsampling
-        'downsample': 2,  # Factor for downsampling (1 = no downsampling)
+        'downsample': 1,  # Factor for downsampling (1 = no downsampling)
         
         # Acquisition parameters
         'total_angle': 2 * np.pi,  # Total rotation angle (radians)
@@ -443,9 +443,10 @@ if __name__ == "__main__":
     #algorithm_config = get_algorithm_config('OSSART')     # Very fast (preview)
     #algorithm_config = get_algorithm_config('SART')       # Alternative to SIRT
     
+    
     # TV-regularized algorithms (reduce artifacts):
-    algorithm_config = get_algorithm_config('OSSART_TV')  # RECOMMENDED for metal
-    #algorithm_config = get_algorithm_config('SART_TV')    # More precise than OSSART_TV
+    #algorithm_config = get_algorithm_config('OSSART_TV')  # RECOMMENDED for metal
+    algorithm_config = get_algorithm_config('SART_TV')    # More precise than OSSART_TV
     #algorithm_config = get_algorithm_config('ASD_POCS')   # Severe artifacts
     #algorithm_config = get_algorithm_config('AWASD_POCS') # Adaptive variant
     

@@ -117,6 +117,7 @@ def main(tiff_folder, configurations, output_folder=None):
     # 2. Apply rotation correction (BEFORE downsampling)
     rotation_angle = configurations.get('rotation_angle', 0.0)
     if rotation_angle != 0.0:
+        print(f"Applying manual rotation correction of {rotation_angle}° to projections...")
         projections = apply_rotation_to_projections(projections, rotation_angle, order=3)
     else:
         print("No rotation applied (rotation_angle = 0)")
