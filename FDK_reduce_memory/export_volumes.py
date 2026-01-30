@@ -37,7 +37,7 @@ def export_volume_to_nii(volume, geo, source_folder, base_output=None):
     volume_export = volume.astype(np.float32)
     volume_export = np.transpose(volume_export, (2, 1, 0))
     
-    affine = np.eye(4)
+    affine = np.eye(4) # Create identity matrix for affine transformation which is necessary for NIfTI because of its coordinate system
     affine[0, 0] = geo.dVoxel[2]
     affine[1, 1] = geo.dVoxel[1]
     affine[2, 2] = geo.dVoxel[0]

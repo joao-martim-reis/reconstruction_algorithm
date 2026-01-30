@@ -53,7 +53,7 @@ ALGORITHM_CONFIGS = {
     # ─────────────────────────────────────────────────────────────────────────
     'CGLS': {
         'category': 'basic',
-        'iterations': 100,
+        'iterations': 150,
         'description': 'Conjugate gradient least squares. Fast convergence, good for fine details.',
         'best_for': 'Bar pattern, simple phantoms, when speed is desired',
         'params': {}
@@ -255,7 +255,9 @@ def get_algorithm_config(algorithm_name):
             f"Available algorithms: {available}"
         )
 
-    return ALGORITHM_CONFIGS[algorithm_name].copy()
+    config = ALGORITHM_CONFIGS[algorithm_name].copy()
+    config['algorithm_name'] = algorithm_name
+    return config
 
 
 def get_preset_config(preset_name):
@@ -286,6 +288,7 @@ def get_preset_config(preset_name):
             else:
                 config[key] = value
 
+    config['algorithm_name'] = preset['algorithm']
     return config
 
 

@@ -354,15 +354,16 @@ if __name__ == "__main__":
         
         # Downsampling reduces resolution but speeds up reconstruction
         # NOTE: This affects maximum achievable resolution!
-        'downsample': 1,
+        'downsample': 2,
         
         # Acquisition parameters
         'total_angle': 2 * np.pi,
-        'calibrated_shift_px': 5.12,
+        #'calibrated_shift_px': 5.12,
+        'calibrated_shift_px': 16.12,
         'shift_sign': 1,
         
         # Reconstruction filter
-        'filter_type': 'hann',  # Options: 'ram-lak', 'shepp-logan', 'cosine', 'hamming', 'hann'
+        'filter_type': 'ram_lak',  # Options: 'ram_lak', 'shepp_logan', 'cosine', 'hamming', 'hann'
         
         # Rotation correction (set angle in degrees: positive=counterclockwise, negative=clockwise, 0=no rotation)
         'rotation_angle': 0.0, 
@@ -387,6 +388,7 @@ if __name__ == "__main__":
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Fantoma_agua' #agua
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA+haste'
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Fantoma_espuma'
 
     
     vol = main(folder, CONFIG, output_folder=CONFIG.get('output_folder_NiFT'))

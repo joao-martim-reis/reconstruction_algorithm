@@ -417,7 +417,7 @@ if __name__ == "__main__":
         
         # Acquisition parameters
         'total_angle': 2 * np.pi,  # Total rotation angle (radians)
-        'calibrated_shift_px': 5.12,  # Detector shift (pixels)
+        'calibrated_shift_px': 15.6,  # Detector shift (pixels)
         'shift_sign': 1,  # Sign of the shift (+1 or -1)
         
         # Rotation correction (positive=counterclockwise, negative=clockwise, 0=no rotation)
@@ -437,7 +437,7 @@ if __name__ == "__main__":
     
     # BASIC algorithms (no TV):
     #algorithm_config = get_algorithm_config('SIRT')       # Classic, balanced
-    #algorithm_config = get_algorithm_config('CGLS')       # Fast, good for details
+    algorithm_config = get_algorithm_config('CGLS')       # Fast, good for details
     #algorithm_config = get_algorithm_config('LSQR')       # Numerically stable
     #algorithm_config = get_algorithm_config('LSMR')       # Improved over LSQR
     #algorithm_config = get_algorithm_config('OSSART')     # Very fast (preview)
@@ -446,7 +446,7 @@ if __name__ == "__main__":
     
     # TV-regularized algorithms (reduce artifacts):
     #algorithm_config = get_algorithm_config('OSSART_TV')  # RECOMMENDED for metal
-    algorithm_config = get_algorithm_config('SART_TV')    # More precise than OSSART_TV
+    #algorithm_config = get_algorithm_config('SART_TV')    # More precise than OSSART_TV
     #algorithm_config = get_algorithm_config('ASD_POCS')   # Severe artifacts
     #algorithm_config = get_algorithm_config('AWASD_POCS') # Adaptive variant
     
@@ -465,26 +465,10 @@ if __name__ == "__main__":
     
     
     # Determine algorithm name and add to CONFIG
-    from iterative_parameters import ALGORITHM_CONFIGS
-    
-    # Find algorithm name by matching the config
-    algorithm_name = None
-    
-    # Check if it's a preset (has 'algorithm' key)
-    if 'algorithm' in algorithm_config:
-        algorithm_name = algorithm_config['algorithm']
-    else:
-        # It's a direct algorithm config - find matching name
-        for name, cfg in ALGORITHM_CONFIGS.items():
-            if (cfg['iterations'] == algorithm_config['iterations'] and 
-                cfg['category'] == algorithm_config['category'] and 
-                cfg['description'] == algorithm_config['description']):
-                algorithm_name = name
-                break
-    
+    algorithm_name = algorithm_config.get('algorithm_name') or algorithm_config.get('algorithm')
     if algorithm_name is None:
         raise ValueError("Could not determine algorithm name from configuration")
-    
+
     algorithm_config['algorithm_name'] = algorithm_name
     CONFIG['algorithm_config'] = algorithm_config
     
@@ -498,12 +482,12 @@ if __name__ == "__main__":
     
 
     # SELECT DATASET
+
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\45kv+0.45mA\Fantoma_agua_destilada'
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_v3' #bar pattern
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_v3' #bar pattern
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA+haste'
-    
-
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_centrado'
 
     vol = main(folder, CONFIG, output_folder=CONFIG.get('output_folder_NiFT'))

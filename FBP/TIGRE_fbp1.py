@@ -237,10 +237,10 @@ if __name__ == "__main__":
         #'filters': ['ram_lak', 'shepp_logan', 'hann', 'hamming', 'cosine', 'blackman']
     }
 
-    tiff_folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
+    tiff_folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Test'
     #tiff_folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
 
-    line_shift = 400
+    line_shift = 100
     lines_filters = [50, 400, 800]
 
     run_reconstruction(tiff_folder, line_shift, lines_filters, CONFIG)
