@@ -23,7 +23,6 @@ from data_processing_3D_2 import (
 )
 
 from export_volumes import export_volume_to_nii, export_volume_HU
-from rotation_alignment import apply_rotation_to_projections
 
 # Import HU conversion function
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -114,15 +113,7 @@ def main(tiff_folder, configurations, output_folder=None):
     if projections is None:
         raise ValueError(f"Failed to load projections from folder: {tiff_folder}")
 
-    # 2. Apply rotation correction (BEFORE downsampling)
-    rotation_angle = configurations.get('rotation_angle', 0.0)
-    if rotation_angle != 0.0:
-        print(f"Applying manual rotation correction of {rotation_angle}° to projections...")
-        projections = apply_rotation_to_projections(projections, rotation_angle, order=3)
-    else:
-        print("No rotation applied (rotation_angle = 0)")
-
-    # 3. Downsample (anti-aliased block-average to reduce memory and computation)
+    # 2. Downsample (anti-aliased block-average to reduce memory and computation)
     # You control the downsampling factor f via configurations['downsample']
     # Higher f = lower resolution but faster & less memory. Adjust based on your needs.
     # NOTE: Downsampling affects achievable resolution - see geometry_reconstruction_voxel_size.py
@@ -254,9 +245,7 @@ if __name__ == "__main__":
         # Reconstruction filter
         'filter_type': 'hann',
         
-        # Rotation correction (positive=counterclockwise, negative=clockwise, 0=no rotation)
-        'rotation_angle': 0.0,
-        
+
         # Output folder
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Image_reconstruction\reconstructed_volumes_Nift'
     }

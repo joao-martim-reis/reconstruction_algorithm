@@ -36,6 +36,7 @@ def selecionar_roi_interativamente(sino_raw):
 
     rect_bg = None
     rect_obj = None
+    selector = [None]  # Keep selector alive to prevent garbage collection
 
     def on_select_callback(eclick, erelease):
         nonlocal rect_bg, rect_obj
@@ -57,7 +58,7 @@ def selecionar_roi_interativamente(sino_raw):
                 det_end - det_start,
                 fill=False,
                 edgecolor="green",
-                linewidth=2,
+                linewidth=3,
                 linestyle="--",
             )
             ax.add_patch(rect_bg)
@@ -74,24 +75,24 @@ def selecionar_roi_interativamente(sino_raw):
                 det_end - det_start,
                 fill=False,
                 edgecolor="orange",
-                linewidth=2,
+                linewidth=3,
                 linestyle="-",
             )
             ax.add_patch(rect_obj)
             ax.set_title("DONE: Background (green) + Object (orange) | Click Confirm", fontsize=11)
 
-        fig.canvas.draw()
+        fig.canvas.draw_idle()
 
-    RectangleSelector(
+    selector[0] = RectangleSelector(
         ax,
         on_select_callback,
-        useblit=True,
+        useblit=False,  # Changed to False for better compatibility
         button=[1],
         minspanx=5,
         minspany=5,
         spancoords="pixels",
-        interactive=True,
-        props=dict(facecolor="cyan", edgecolor="cyan", alpha=0.2, fill=True),
+        interactive=False,  # Changed to False to avoid conflicts with drawn rectangles
+        props=dict(facecolor="cyan", edgecolor="cyan", alpha=0.3, fill=True, linewidth=2),
     )
 
     ax_radio = plt.axes([0.05, 0.05, 0.25, 0.15], facecolor="#e4e4e4")

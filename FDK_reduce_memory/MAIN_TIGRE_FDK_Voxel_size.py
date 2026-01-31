@@ -17,7 +17,6 @@ from crop_projections import select_crop_region, apply_crop_to_projections
 from data_processing_FDK_3D import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
 from export_volumes import export_volume_to_nii, export_volume_HU
 from napari_filters import interactive_filter_viewer
-from rotation_alignment import apply_rotation_to_projections
 
 
 # Import HU conversion function
@@ -159,15 +158,7 @@ def main(tiff_folder, configurations, output_folder=None):
     # Step 1.1: Load raw TIFF projection images
     projections_raw = load_images(tiff_folder)
 
-    # Step 1.2: Apply manual rotation correction 
-
-    rotation_angle = configurations.get('rotation_angle', 0.0)
-    if rotation_angle != 0.0:
-        projections_raw = apply_rotation_to_projections(projections_raw, rotation_angle, order=3)
-    else:
-        print("No rotation applied (rotation_angle = 0)")
-
-    # Step 1.3: Generate collapsed sinogram for I0 reference selection
+    # Step 1.2: Generate collapsed sinogram for I0 reference selection
     sino_raw = generate_collapsed_sinogram(projections_raw)
     
     # Step 1.3: User selects background ROI and calculates mean I0 value
@@ -344,6 +335,7 @@ def main(tiff_folder, configurations, output_folder=None):
 if __name__ == "__main__":
 
     CONFIG = {
+
         # PRIMARY INPUT: Desired voxel size in micrometers (μm)
         'voxel_size': 26,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
         
@@ -354,19 +346,17 @@ if __name__ == "__main__":
         
         # Downsampling reduces resolution but speeds up reconstruction
         # NOTE: This affects maximum achievable resolution!
-        'downsample': 2,
+        'downsample': 1,
         
         # Acquisition parameters
         'total_angle': 2 * np.pi,
         #'calibrated_shift_px': 5.12,
-        'calibrated_shift_px': 16.12,
-        'shift_sign': 1,
+        'calibrated_shift_px': 32,
+        #'calibrated_shift_px': (5.12),
+        'shift_sign': +1,  # +1 or -1 depending on calibration direction
         
         # Reconstruction filter
         'filter_type': 'ram_lak',  # Options: 'ram_lak', 'shepp_logan', 'cosine', 'hamming', 'hann'
-        
-        # Rotation correction (set angle in degrees: positive=counterclockwise, negative=clockwise, 0=no rotation)
-        'rotation_angle': 0.0, 
         
         # Output folders
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift',
@@ -384,7 +374,7 @@ if __name__ == "__main__":
 
 
     # Análise de resultados
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_v3' #bar pattern
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\test' #bar pattern
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Fantoma_agua' #agua
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA+haste'
