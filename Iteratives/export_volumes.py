@@ -6,7 +6,7 @@ import nibabel as nib
 from datetime import datetime
 
 # Import HU conversion function
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(__file__))) # Add parent directory to sys.path
 from HU_conversion import HU_conversion
 
 
@@ -38,9 +38,9 @@ def export_volume_to_nii(volume, geo, source_folder, base_output=None):
     volume_export = np.transpose(volume_export, (2, 1, 0))
     
     affine = np.eye(4) # Create identity matrix for affine transformation which is necessary for NIfTI because of its coordinate system
-    affine[0, 0] = geo.dVoxel[2]
-    affine[1, 1] = geo.dVoxel[1]
-    affine[2, 2] = geo.dVoxel[0]
+    affine[0, 0] = geo.dVoxel[2] #use the voxel size information from the geometry to preserve spatial accuracy
+    affine[1, 1] = geo.dVoxel[1] #use the voxel size information from the geometry to preserve spatial accuracy
+    affine[2, 2] = geo.dVoxel[0] #use the voxel size information from the geometry to preserve spatial accuracy
     
     affine[0, 3] = -(volume_export.shape[0] * geo.dVoxel[2]) / 2.0
     affine[1, 3] = -(volume_export.shape[1] * geo.dVoxel[1]) / 2.0

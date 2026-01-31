@@ -131,7 +131,10 @@ def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle,
     geo.DSO = DSO
     
     
-    shift_mm = shift_pixels * required_pixel_size
+    # CRITICAL: Convert shift from pixels to mm using EFFECTIVE DETECTOR PIXEL SIZE
+    # The physical misalignment was measured during calibration with the real detector pixel
+    # It does NOT depend on the chosen voxel_size (which affects required_pixel_size)
+    shift_mm = shift_pixels * effective_detector_pixel  #  Physical detector pixel
     shift_mm_sign = shift_mm * shift_sign  # Apply sign
     
     if crop_params is not None:
@@ -140,7 +143,8 @@ def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle,
         new_center = (crop_params['col_end'] + crop_params['col_start']) / 2.0
         crop_shift_pixels = new_center - original_center
         print(f"    Crop adjustment: New center: {new_center:.2f} px (original: {original_center:.2f} px)")
-        crop_shift_mm = crop_shift_pixels * required_pixel_size
+        # Crop shift also uses EFFECTIVE DETECTOR PIXEL SIZE (physical)
+        crop_shift_mm = crop_shift_pixels * effective_detector_pixel  #  Physical detector pixel
         crop_shift_mm = crop_shift_mm * shift_sign  # Apply sign
         # Total offset = calibrated shift + crop shift
         total_shift_mm = shift_mm_sign + crop_shift_mm   

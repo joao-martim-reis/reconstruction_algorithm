@@ -1,6 +1,6 @@
 import numpy as np
 import tifffile as tiff
-import os
+import os #os is a module that provides a way of using operating system dependent functionality
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector, Button
 import re
@@ -8,25 +8,18 @@ import re
 def load_images(tiff_folder):
     print(f"--> Loading images from: {tiff_folder}")
     
-    if not os.path.exists(tiff_folder):
+    if not os.path.exists(tiff_folder): #os.path.exists checks if a path exists
         print(f"Error: Folder does not exist: {tiff_folder}")
-        # Try to provide some diagnostic info about the parent directory
-        parent = os.path.dirname(tiff_folder)
-        try:
-            parent_list = os.listdir(parent)
-            print(f"Parent folder contents ({parent}): {parent_list[:20]}{'...' if len(parent_list)>20 else ''}")
-        except Exception as e:
-            print(f"Could not list parent folder ({parent}): {e}")
         return None
 
     def extract_number(filename):
-        match = re.search(r'\d+', filename)
-        if match:
+        match = re.search(r'\d+', filename) #re.search finds the first occurrence of the pattern
+        if match: # If a match is found, return the integer value
             return int(match.group())
         return 0
 
     # Accept common TIFF extensions ('.tif' and '.tiff') in a case-insensitive way
-    file_list = [f for f in os.listdir(tiff_folder) if f.lower().endswith(('.tif', '.tiff'))]
+    file_list = [f for f in os.listdir(tiff_folder) if f.lower().endswith(('.tif', '.tiff'))] #os.listdir lists files in a directory
     file_list.sort(key=extract_number)
     num_files = len(file_list)
     print(f"Number of files found: {num_files}") 
@@ -38,28 +31,15 @@ def load_images(tiff_folder):
 
     if num_files == 0:
         print("Error: No TIFF files found in the folder.")
-        try:
-            all_files = os.listdir(tiff_folder)
-            print(f"Folder contents: {all_files[:50]}{'...' if len(all_files)>50 else ''}")
-        except Exception as e:
-            print(f"Could not list folder contents: {e}")
-        return None
 
-    try:
-        first_img = tiff.imread(os.path.join(tiff_folder, file_list[0]))
-        height, width = first_img.shape 
-        print(f"Dimensions: {height} (H) x {width} (W) | {num_files} projections.")
-    except Exception as e:
-        print(f"Error reading first image ({file_list[0]}): {e}")
-        return None
-
+    
+    first_img = tiff.imread(os.path.join(tiff_folder, file_list[0]))
+    height, width = first_img.shape 
+    print(f"Dimensions: {height} (H) x {width} (W) | {num_files} projections.")
+  
     projections = np.zeros((height, width, num_files), dtype=first_img.dtype)
-    for i, f in enumerate(file_list):
-        try:
-            projections[:, :, i] = tiff.imread(os.path.join(tiff_folder, f))
-        except Exception as e:
-            print(f"Error reading image '{f}': {e}")
-            return None
+    for i, f in enumerate(file_list): #i is the index, f is the filename
+        projections[:, :, i] = tiff.imread(os.path.join(tiff_folder, f))
     
     print("--> Images Loaded Successfully")
     return projections
@@ -142,6 +122,6 @@ def get_I0_from_roi(sino_raw, roi_background, height):
     """
     r_start, r_end, c_start, c_end = roi_background
     roi_crop = sino_raw[r_start:r_end, c_start:c_end]
-    mean_I0 = (np.mean(roi_crop)) / height
+    mean_I0 = (np.mean(roi_crop)) / height # Normalize by height to get average per pixel as the sinogram is a sum projection 
     print(f"--> I0 value: {mean_I0:.2f}")
     return mean_I0

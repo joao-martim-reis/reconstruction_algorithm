@@ -19,15 +19,17 @@ from export_volumes import export_volume_to_nii, export_volume_HU
 from napari_filters import interactive_filter_viewer
 
 
-# Import HU conversion function
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from HU_conversion import HU_conversion
-
-
 def print_volume_info(volume, geo=None):
     """
     Prints detailed information about the reconstructed volume.
     """
+    # It is common for reconstructed CT volumes to contain mall negative values in background regions. These negatives can
+    # arise from numerical effects of the reconstruction filter (e.g. Ram-Lak ringing), slight mis-centering/shift errors, noise, or
+    # algorithmic artifacts. 
+    # Small negative values are usually not a sign of catastrophic failure; however, if you require strictly
+    # non-negative data its possible to clip.(`volume[volume<0]=0`),but clipping may hide underlying issues that are better fixed
+    # (I0 calibration, center of rotation, filter choice, etc.).
+
     print("\n" + "="*60)
     print("RECONSTRUCTED VOLUME INFORMATION")
     print("="*60)
@@ -50,8 +52,7 @@ def normalize_projections(projections_raw, I0_override=None):
     """
 
     print("--> Normalizing cropped projections...")
-    print(f"    Input shape: {projections_raw.shape}")
-    print(f"    Memory size: {projections_raw.nbytes / 1e6:.1f} MB")
+    print(f"    Input shape: {projections_raw.shape}, Memory size: {projections_raw.nbytes / 1e6:.1f} MB")
 
     if I0_override is None:
         I0 = float(np.percentile(projections_raw, 1))
@@ -61,7 +62,7 @@ def normalize_projections(projections_raw, I0_override=None):
     # Convert to float32 for calculations (lighter than float64)
     projections_raw = projections_raw.astype(np.float32)
     ratio = projections_raw / (I0 + 1e-6)# Avoid division by zero
-    ratio = np.clip(ratio, 1e-6, 1.2)# Prevent log(0) and extreme values
+    ratio = np.clip(ratio, 1e-6, 1.2)# np clip to avoid log(0) and extreme values
     
     # Beer-Lambert law: -log(I/I0)
     projections_norm = -np.log(ratio)
@@ -70,6 +71,10 @@ def normalize_projections(projections_raw, I0_override=None):
     projections_norm[projections_norm < 0] = 0
     
     print(f"    ✓ Normalization complete")
+
+    # Debug prints (commented): inspect dtype and range after normalization
+    # print('DEBUG projections_raw:', projections_raw.dtype, projections_raw.min(), projections_raw.max())
+    # print('DEBUG projections_norm:', projections_norm.dtype, projections_norm.min(), projections_norm.max())
     return projections_norm
 
 
@@ -89,15 +94,12 @@ def downsample_block_mean_pad(proj, f):
     2. Reshapes the padded array to isolate f×f blocks
     3. Computes the mean value across each block, replacing f×f pixels with 1
     4. Preserves all angle dimensions without modification
-    
-    IMPORTANT: Downsampling increases effective pixel size by factor f
-    This REDUCES the maximum achievable resolution (Nyquist limit increases)
     """
-    H, W, A = proj.shape # Height, Width, Angles
+    Height, Width, Angles = proj.shape  # Height, Width, Angles
     
     # Calculate padding needed to make dimensions divisible by f
-    pad_h = (-H) % f
-    pad_w = (-W) % f
+    pad_h = (-Height) % f # verify if Height is divisible by f; if not, calculate required padding
+    pad_w = (-Width) % f # verify if Width is divisible by f; if not, calculate required padding
     
     # Apply edge padding if necessary to ensure clean division
     if pad_h or pad_w:
@@ -106,22 +108,33 @@ def downsample_block_mean_pad(proj, f):
         proj_p = proj
     
     # Reshape to separate blocks and compute mean across block elements
-    Hc, Wc = proj_p.shape[:2]
-    return proj_p.reshape(Hc//f, f, Wc//f, f, A).mean(axis=(1, 3))
+    Hc = int(proj_p.shape[0])  # Padded height in pixels
+    Wc = int(proj_p.shape[1])  # Padded width in pixels
+
+    downsampling_h = Hc // f # Calculate new height after downsampling
+    downsampling_w = Wc // f # Calculate new width after downsampling
+
+    # Step 1: reshape into blocks of shape
+    # Each element blocks[i, :, j, :, k] contains the f×f pixel block for output pixel (i, j) at angle k.
+    blocks = proj_p.reshape(downsampling_h, f, downsampling_w, f, Angles) 
+
+    # Step 2: compute the mean across the two block axes (f, f) -> axes 1 and 3
+    # This averages each f×f block into a single pixel, producing shape
+    # (downsampling_h, downsampling_w, A).
+    downsampled = blocks.mean(axis=(1, 3))
+
+    # Now `downsampled` has shape (H//f, W//f, A) and contains the block-wise averaged projections.
+    
+    return downsampled
 
 
 
 
 def main(tiff_folder, configurations, output_folder=None):
     """
-    Main FDK reconstruction pipeline with memory-efficient cropping workflow.
-    
-    *** VOXEL-SIZE-FIRST VERSION ***
+    Main FDK reconstruction pipeline 
     This version uses VOXEL SIZE as the primary input parameter instead of PIXEL SIZE.
     This makes it easier to compare with commercial micro-CT systems and published papers.
-    
-    Key difference: CONFIG uses 'voxel_size' (in μm) instead of 'pixel_size' (in mm)
-    
 
     PHASE 1: Data Loading & Preprocessing
         - Load raw projections from TIFF files
@@ -144,16 +157,11 @@ def main(tiff_folder, configurations, output_folder=None):
         - Optional: Export to NIfTI format
         - Optional: Convert to Hounsfield Units (HU)
     
-    This workflow minimizes memory usage by cropping BEFORE normalization,
-    rather than processing full-size projections.
     """
     
     
     # PHASE 1: DATA LOADING & PREPROCESSING
-    
-    print("\n" + "="*70)
     print("PHASE 1: DATA LOADING & PREPROCESSING")
-    print("="*70)
     
     # Step 1.1: Load raw TIFF projection images
     projections_raw = load_images(tiff_folder)
@@ -171,10 +179,7 @@ def main(tiff_folder, configurations, output_folder=None):
     
     
     # PHASE 2: SPATIAL OPTIMIZATION (MEMORY REDUCTION)
-    
-    print("\n" + "="*70)
     print("PHASE 2: SPATIAL OPTIMIZATION")
-    print("="*70)
     
     # Step 2.1: Define crop region on first raw projection
     first_proj_raw = projections_raw[:, :, 0]
@@ -182,39 +187,34 @@ def main(tiff_folder, configurations, output_folder=None):
     
     # Step 2.2: Apply crop to ALL raw projections
     projections_cropped_raw = apply_crop_to_projections(projections_raw, crop_params)
-
-    # Clean up: free original raw data
     del projections_raw
     gc.collect()
     
     # Step 2.3: Normalize cropped projections using Beer-Lambert law: -log(I/I0)
     projections_norm = normalize_projections(projections_cropped_raw, I0_override=mean_I0)
-    
-    # Clean up: free cropped raw data
     del projections_cropped_raw
     gc.collect()
     
     # Step 2.4: Optional downsampling (applied AFTER crop for maximum efficiency)
-    # NOTE: Downsampling affects achievable resolution - see geometry_reconstruction_voxel_size.py
-    f = configurations['downsample']  # Get downsampling factor
+    # NOTE: Downsampling affects achievable resolution 
+    f = configurations['downsample'] 
     
     if f > 1:
         print(f"Downsampling by factor {f}x...")
         print(f"      NOTE: This will REDUCE maximum achievable resolution")
-        projections_final = downsample_block_mean_pad(projections_norm, f).astype(np.float32)
+        projections_final = downsample_block_mean_pad(projections_norm, f).astype(np.float32) #convert to float32 to save memory
         print(f"      Final shape: {projections_final.shape}")
-        
         del projections_norm
         gc.collect()
+    elif f < 1:
+        print(f"Error: Downsampling factor must be >=1 or equal to 1")
+        return None
     else:
         projections_final = projections_norm
     
     
-    # PHASE 3: GEOMETRY SETUP & RECONSTRUCTION
-   
-    print("\n" + "="*70)
+
     print("PHASE 3: GEOMETRY SETUP & RECONSTRUCTION (VOXEL-SIZE-FIRST)")
-    print("="*70)
     
     # Step 3.1: Calculate detector shift (adjusted for downsampling factor)
     calibrated_shift_px = configurations['calibrated_shift_px']
@@ -224,14 +224,11 @@ def main(tiff_folder, configurations, output_folder=None):
     # Step 3.2: Adjust voxel size for downsampling
     # CRITICAL: Downsampling increases effective voxel size
     # Example: voxel_size = 20 μm, downsample = 4 → effective_voxel_size = 80 μm
-    # This matches pixel-size-first approach: pixel_size = configurations['pixel_size'] * f
     effective_voxel_size = configurations['voxel_size'] * f
     print(f" Voxel size adjustment: {configurations['voxel_size']:.2f} μm × {f} = {effective_voxel_size:.2f} μm")
     
     # Step 3.3: Setup TIGRE geometry with ADJUSTED voxel size
     # The voxel_size entering setup_geometry is already adjusted for downsampling
-    # Inside setup_geometry: required_pixel_size = voxel_size × magnification (simple!)
-    # (CRITICAL: crop_params adjusts detector offset for correct reconstruction center)
     geo, angles = setup_geometry(
         projections_final.shape, 
         effective_voxel_size,  # ← Already adjusted for downsampling
@@ -249,25 +246,47 @@ def main(tiff_folder, configurations, output_folder=None):
     # Step 3.3: Prepare data for TIGRE (transpose to TIGRE format: angles × height × width)
     print(f"Preparing data for TIGRE...")
     input_data = np.transpose(projections_final, (2, 0, 1)).copy()
-    
-    # Clean up: free final projections
     del projections_final
     gc.collect()
-    
+    # Debug prints inspect input to TIGRE
+    # print('DEBUG input_data dtype/min/max:', input_data.dtype, input_data.min(), input_data.max())
+
 
     # Step 3.4: EXECUTE FDK reconstruction algorithm
     print(f"Running FDK algorithm with '{configurations['filter_type']}' filter...")
     volume = algs.fdk(input_data, geo, angles, filter=configurations['filter_type'])
     print_volume_info(volume, geo)
+
+    # Debug prints: inspect reconstructed volume range
+    # print('DEBUG volume dtype/min/max:', volume.dtype, volume.min(), volume.max())
     
     
     # PHASE 4: POST-PROCESSING & EXPORT
-    
-    print("\n" + "="*70)
     print("PHASE 4: POST-PROCESSING & EXPORT")
-    print("="*70)
     
-    # Step 4.1: Optional NIfTI export
+    # Step 4.1: NAPARI visualization
+    print(f"Opening Napari viewer...")
+    
+    # Voxel scale for napari
+    voxel_scale = (geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]) if volume.ndim == 3 else (geo.dVoxel[1], geo.dVoxel[2])
+    
+    # Interactive filtering (commented out for now)
+    # filter_choice = input("\nDo you want to use INTERACTIVE filtering? (y/n): ").strip().lower()
+    # if filter_choice == 'y':
+    #     filtered_folder = configurations.get('filtered_volumes_folder')
+    #     viewer, final_filter_params = interactive_filter_viewer(volume, name="CT Volume", scale=voxel_scale, nii_filepath=None, filtered_output_folder=filtered_folder)
+    #     napari.run()
+    #     from napari_filters import print_applied_filters_summary
+    #     print_applied_filters_summary(final_filter_params)
+    # else:
+    
+    # View reconstructed 3D volume (FDK always produces 3D output)
+    viewer = napari.Viewer()
+    viewer.add_image(volume, scale=voxel_scale, name="CT Volume")
+    napari.run()
+    
+
+    # Step 4.2: Optional NIfTI export
     export_choice = input("\nDo you want to export the volume to .nii format? (y/n): ").strip().lower()
     nii_filepath = None
     if export_choice == 'y':
@@ -275,39 +294,6 @@ def main(tiff_folder, configurations, output_folder=None):
         print(f"Volume exported to NIfTI format")
     else:
         print(f"NIfTI export skipped")
-    
-
-
-    # Step 4.2: NAPARI visualization
-    print(f"Opening Napari viewer...")
-    
-    # Voxel scale for napari
-    voxel_scale = (geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]) if volume.ndim == 3 else (geo.dVoxel[1], geo.dVoxel[2])
-    
-    # Ask if user wants interactive filtering
-    filter_choice = input("\nDo you want to use INTERACTIVE filtering? (y/n): ").strip().lower() #strip is to remove extra spaces
-    
-    if filter_choice == 'y':
-        # Open interactive viewer with filters
-        filtered_folder = configurations.get('filtered_volumes_folder')
-        viewer, final_filter_params = interactive_filter_viewer(volume, name="CT Volume", scale=voxel_scale, nii_filepath=nii_filepath, filtered_output_folder=filtered_folder)
-        napari.run()
-
-        # Print summary of applied filters after closing napari
-        from napari_filters import print_applied_filters_summary
-        print_applied_filters_summary(final_filter_params)
-    else:
-        # Just view volume without filtering
-        viewer = napari.Viewer()
-        ndim = volume.ndim 
-        if ndim == 2:
-            viewer.add_image(volume, scale=(geo.dVoxel[1], geo.dVoxel[2]))
-        elif ndim == 3:
-            viewer.add_image(volume, scale=(geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]))
-        else:
-            viewer.add_image(volume)
-
-    napari.run()
     
 
     # Step 4.3: Optional Hounsfield Unit (HU) conversion
@@ -336,24 +322,21 @@ if __name__ == "__main__":
 
     CONFIG = {
 
-        # PRIMARY INPUT: Desired voxel size in micrometers (μm)
         'voxel_size': 26,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
-        
-        # Geometry parameters 
-        'DSD': 457,  # Distance Source to Detector (mm)
-        'DSO': 211,  # Distance Source to Object (mm)
 
-        
-        # Downsampling reduces resolution but speeds up reconstruction
-        # NOTE: This affects maximum achievable resolution!
-        'downsample': 1,
-        
-        # Acquisition parameters
-        'total_angle': 2 * np.pi,
         #'calibrated_shift_px': 5.12,
         'calibrated_shift_px': 32,
         #'calibrated_shift_px': (5.12),
-        'shift_sign': +1,  # +1 or -1 depending on calibration direction
+
+        # Geometry parameters 
+        'total_angle': 2 * np.pi,
+        'shift_sign': +1,
+        'DSD': 457,  # Distance Source to Detector (mm)
+        'DSO': 211,  # Distance Source to Object (mm)
+
+        # Downsampling reduces resolution but speeds up reconstruction
+        # NOTE: This affects maximum achievable resolution!
+        'downsample': 1,
         
         # Reconstruction filter
         'filter_type': 'ram_lak',  # Options: 'ram_lak', 'shepp_logan', 'cosine', 'hamming', 'hann'

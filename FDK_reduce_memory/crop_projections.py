@@ -27,7 +27,7 @@ def select_crop_region(first_projection):
         'horizontal_line_bottom': None   # Bottom row
     }
     
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6)) #figure with 2 side-by-side axes
     plt.subplots_adjust(bottom=0.15, wspace=0.3)
     
     # Plot original
@@ -66,12 +66,13 @@ def select_crop_region(first_projection):
             row_start = crop_state['horizontal_line_top']
             row_end = crop_state['horizontal_line_bottom']
             
+            # Define crop box as the simetric region around center 
             col_start = max(0, center_col - dist)
             col_end = min(width, center_col + dist)
             
             cropped = first_projection[row_start:row_end, col_start:col_end]
             im2.set_data(cropped)
-            im2.set_extent([col_start, col_end, row_end, row_start])
+            im2.set_extent([col_start, col_end, row_end, row_start]) #set.extent is used to set the data limits for the axes
             ax2.set_xlim(col_start, col_end)
             ax2.set_ylim(row_end, row_start)
             ax2.set_title(f"Crop Preview: {row_end-row_start}H x {col_end-col_start}W px", fontsize=12)
@@ -85,7 +86,7 @@ def select_crop_region(first_projection):
         fig.canvas.draw()
     
     def on_click(event):
-        if event.inaxes != ax1:
+        if event.inaxes != ax1: #if click is outside ax1, ignore
             return
         
         x_click, y_click = event.xdata, event.ydata

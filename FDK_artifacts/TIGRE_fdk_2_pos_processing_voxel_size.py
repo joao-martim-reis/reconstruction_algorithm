@@ -37,10 +37,16 @@ from napari_filters import (
 
 
 def print_volume_info(volume, geo=None):
-
     """
     Prints detailed information about the reconstructed volume.
     """
+    # It is common for reconstructed CT volumes to contain small negative values in background regions. These negatives can
+    # arise from numerical effects of the reconstruction filter (e.g. Ram-Lak ringing), slight mis-centering/shift errors, noise, or
+    # algorithmic artifacts. 
+    # Small negative values are usually not a sign of catastrophic failure; however, if you require strictly
+    # non-negative data its possible to clip.(`volume[volume<0]=0`),but clipping may hide underlying issues that are better fixed
+    # (I0 calibration, center of rotation, filter choice, etc.).
+
     print("\n" + "="*60)
     print("RECONSTRUCTED VOLUME INFORMATION")
     print("="*60)
@@ -48,9 +54,9 @@ def print_volume_info(volume, geo=None):
     print(f"Dimensions: {volume.shape}")
     print("="*60 + "\n") 
     print(f"\nGeometric information:")
-    print(f"  - Voxel size: {geo.dVoxel} mm")
+    print(f"  - Voxel size: [{geo.dVoxel[0]:.3f}, {geo.dVoxel[1]:.3f}, {geo.dVoxel[2]:.3f}] mm")
     print(f"  - Number of voxels: {geo.nVoxel}")
-    print(f"  - Physical dimensions: {geo.sVoxel} mm")
+    print(f"  - Physical dimensions: [{geo.sVoxel[0]:.3f}, {geo.sVoxel[1]:.3f}, {geo.sVoxel[2]:.3f}] mm")
     print("="*60 + "\n")
 
 
@@ -75,31 +81,53 @@ def normalize_projections(projections_raw, I0_override=None):
 
 
 def downsample_block_mean_pad(proj, f):
-    """Downsample projections by factor f using block-average with edge padding.
-    
-    This anti-aliased downsampling averages f×f pixel blocks instead of picking one pixel.
-    Reduces aliasing artifacts and preserves signal better than stride sampling.
-    
-    • Detector pixel size increases by factor f: new_pixel_size = original_pixel_size × f
-    • Reconstructed voxel size also scales by f (via Nyquist: voxel_size = pixel_size / magnification)
-    • Spatial resolution in reconstructed volume DECREASES by factor f
-    • This is a trade-off: lower resolution for reduced memory (~f² reduction) and faster reconstruction
-
-    IMPORTANT: Downsampling increases effective pixel size by factor f
-    This REDUCES the maximum achievable resolution (Nyquist limit increases)
     """
-    H, W, A = proj.shape
-    # compute padding so H and W become divisible by f
-    pad_h = (-H) % f # amount of padding (pixels) needed in height
-    pad_w = (-W) % f # amount of padding (pixels) needed in width
+    This function reduces the spatial dimensions of projection images by computing
+    the mean value of non-overlapping blocks of pixels. Each block has dimensions
+    (f × f), and the resulting downsampled image has dimensions (H//f × W//f).
+
+    Edge padding is applied when the original dimensions are not evenly divisible
+    by the downsampling factor f. The padding uses edge replication mode, meaning
+    the last row/column of pixels are duplicated to fill the required padding space,
+    ensuring that all pixels can be grouped into complete f×f blocks without loss.
+
+    The downsampling process:
+    1. Pads the height and width dimensions to make them divisible by f
+    2. Reshapes the padded array to isolate f×f blocks
+    3. Computes the mean value across each block, replacing f×f pixels with 1
+    4. Preserves all angle dimensions without modification
+    """
+    Height, Width, Angles = proj.shape  # Height, Width, Angles
+    
+    # Calculate padding needed to make dimensions divisible by f
+    pad_h = (-Height) % f # verify if Height is divisible by f; if not, calculate required padding
+    pad_w = (-Width) % f # verify if Width is divisible by f; if not, calculate required padding
+    
+    # Apply edge padding if necessary to ensure clean division
     if pad_h or pad_w:
         proj_p = np.pad(proj, ((0, pad_h), (0, pad_w), (0, 0)), mode='edge')
     else:
         proj_p = proj
     
-    Hc, Wc = proj_p.shape[:2]
-    # reshape to blocks and average over the block axes (anti-aliasing)
-    return proj_p.reshape(Hc//f, f, Wc//f, f, A).mean(axis=(1, 3))
+    # Reshape to separate blocks and compute mean across block elements
+    Hc = int(proj_p.shape[0])  # Padded height in pixels
+    Wc = int(proj_p.shape[1])  # Padded width in pixels
+
+    downsampling_h = Hc // f # Calculate new height after downsampling
+    downsampling_w = Wc // f # Calculate new width after downsampling
+
+    # Step 1: reshape into blocks of shape
+    # Each element blocks[i, :, j, :, k] contains the f×f pixel block for output pixel (i, j) at angle k.
+    blocks = proj_p.reshape(downsampling_h, f, downsampling_w, f, Angles) 
+
+    # Step 2: compute the mean across the two block axes (f, f) -> axes 1 and 3
+    # This averages each f×f block into a single pixel, producing shape
+    # (downsampling_h, downsampling_w, A).
+    downsampled = blocks.mean(axis=(1, 3))
+
+    # Now `downsampled` has shape (H//f, W//f, A) and contains the block-wise averaged projections.
+    
+    return downsampled
 
 
 
@@ -188,43 +216,44 @@ def main(tiff_folder, configurations, output_folder=None):
     volume = algs.fdk(input_data, geo, angles, filter=configurations['filter_type'])  # FDK reconstruction
     print_volume_info(volume, geo)
     
-    # Ask if you want to export to .nii format
+    # PHASE 4: POST-PROCESSING & EXPORT
+    print("PHASE 4: POST-PROCESSING & EXPORT")
+    
+    # Step 4.1: NAPARI visualization
+    print("--> Opening Napari viewer...")
+    
+    # Voxel scale for napari
+    voxel_scale = (geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2])
+    
+    # Interactive filtering (commented out for now)
+    # filter_choice = input("\nDo you want to use INTERACTIVE filtering with sliders? (y/n): ").strip().lower()
+    # if filter_choice == 'y':
+    #     print("\n" + "="*60)
+    #     print("  ANALYZING VOLUME...")
+    #     print("="*60)
+    #     recommendations = get_filter_recommendations(volume)
+    #     rec = recommendations['primary']
+    #     print(f"\n💡 RECOMMENDATION: '{rec['name']}'")
+    #     print(f"   Reason: {rec['reason']}")
+    #     print(f"\n   You can test all filters with the sliders in napari!")
+    #     viewer = interactive_filter_viewer(volume, name="CT Volume", scale=voxel_scale, nii_filepath=None)
+    # else:
+    
+    # View reconstructed 3D volume (FDK always produces 3D output)
+    viewer = napari.Viewer()
+    viewer.add_image(volume, scale=voxel_scale, name="CT Volume")
+    napari.run()
+    
+    # Step 4.2: Optional NIfTI export
     export_choice = input("\nDo you want to export the volume to .nii format? (y/n): ").strip().lower()
     nii_filepath = None
     if export_choice == 'y':
         nii_filepath = export_volume_to_nii(volume, geo, tiff_folder, base_output=output_folder)
-    
-    # Open Napari to visualize the volume 
-    print("--> Opening Napari...")
-    print(f"--> Volume shape: {volume.shape}, ndim={getattr(volume, 'ndim', 'unknown')}")
-    
-    # Voxel scale for napari
-    voxel_scale = (geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]) if volume.ndim == 3 else (geo.dVoxel[1], geo.dVoxel[2])
-    
-    # Ask if user wants interactive filtering
-    filter_choice = input("\nDo you want to use INTERACTIVE filtering with sliders? (y/n): ").strip().lower()
-    
-    if filter_choice == 'y':
-        # Show recommendations
-        print("\n" + "="*60)
-        print("  ANALYZING VOLUME...")
-        print("="*60)
-        recommendations = get_filter_recommendations(volume)
-        
-        rec = recommendations['primary']
-        print(f"\n💡 RECOMMENDATION: '{rec['name']}'")
-        print(f"   Reason: {rec['reason']}")
-        print(f"\n   You can test all filters with the sliders in napari!")
-        
-        # Open interactive viewer with sliders
-        viewer = interactive_filter_viewer(volume, name="CT Volume", scale=voxel_scale, nii_filepath=nii_filepath)
+        print(f"Volume exported to NIfTI format")
     else:
-        # Just view volume without filtering
-        viewer = view_volume_with_filters(volume, name="CT Volume", scale=voxel_scale)
-
-    napari.run()
+        print(f"NIfTI export skipped")
     
-    
+    # Step 4.3: Optional Hounsfield Unit (HU) conversion
     if export_choice == 'y' and nii_filepath is not None:
         hu_choice = input("\nDo you want to also export in Hounsfield Units (HU)? (y/n): ").strip().lower()
         if hu_choice == 'y':

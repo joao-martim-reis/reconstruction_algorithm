@@ -1,6 +1,6 @@
 import numpy as np
 import tifffile as tiff
-import os
+import os #os is a module that provides a way of using operating system dependent functionality
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector, Button
 import re
@@ -8,18 +8,19 @@ import re
 def load_images(tiff_folder):
     print(f"--> Loading images from: {tiff_folder}")
     
-    if not os.path.exists(tiff_folder):
-        print(f"Error: Folder does not exist.")
+    if not os.path.exists(tiff_folder): #os.path.exists checks if a path exists
+        print(f"Error: Folder does not exist: {tiff_folder}")
         return None
 
     # function to extract numbers from filenames for sorting 
     def extract_number(filename):
-        match = re.search(r'\d+', filename)
-        if match:
+        match = re.search(r'\d+', filename) #re.search finds the first occurrence of the pattern
+        if match: # If a match is found, return the integer value
             return int(match.group())
         return 0
 
-    file_list = [f for f in os.listdir(tiff_folder) if f.lower().endswith('.tif')]
+    # Accept common TIFF extensions ('.tif' and '.tiff') in a case-insensitive way
+    file_list = [f for f in os.listdir(tiff_folder) if f.lower().endswith(('.tif', '.tiff'))] #os.listdir lists files in a directory
     file_list.sort(key=extract_number)
     num_files = len(file_list)
     print(f"Number of files found: {num_files}") 
@@ -117,11 +118,11 @@ def selecionar_roi_I0(sino_raw):
 
 def get_I0_from_roi(sino_raw, roi_background, height):
     """
-    Calcula o valor médio de I0 a partir da ROI de background.
+    Calculate the mean I0 value from the background ROI.
     """
     r_start, r_end, c_start, c_end = roi_background
     roi_crop = sino_raw[r_start:r_end, c_start:c_end]
-    mean_I0 = (np.mean(roi_crop)) / height
+    mean_I0 = (np.mean(roi_crop)) / height # Normalize by height to get average per pixel as the sinogram is a sum projection 
     print(f"--> I0 value: {mean_I0:.2f}")
     return mean_I0
 
