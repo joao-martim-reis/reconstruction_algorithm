@@ -99,7 +99,7 @@ ALGORITHM_CONFIGS = {
     # ─────────────────────────────────────────────────────────────────────────
     'SART': {
         'category': 'basic',
-        'iterations': 50,
+        'iterations': 80,
         'description': 'Algebraic variant similar to SIRT with different weighting.',
         'best_for': 'Alternative to SIRT',
         'params': {}
@@ -179,59 +179,8 @@ ALGORITHM_CONFIGS.update({
 # ═══════════════════════════════════════════════════════════════════════════
 
 # Configurações otimizadas para casos comuns
-PRESET_CONFIGS = {
-    
-    'fantoma_pmma': {
-        'algorithm': 'SIRT',
-        'modifications': {'iterations': 80},
-        'description': 'Optimized for simple PMMA phantoms'
-    },
-    
-    'fantoma_agua': {
-        'algorithm': 'CGLS',
-        'modifications': {'iterations': 60},
-        'description': 'Optimized for water phantoms'
-    },
-    
-    'padrao_barras': {
-        'algorithm': 'CGLS',
-        'modifications': {'iterations': 50},
-        'description': 'Optimized for resolution tests (bar pattern)'
-    },
-    
-    'metal_artifacts': {
-        'algorithm': 'OSSART_TV',
-        'modifications': {
-            'iterations': 50,
-            'params': {'tv_lambda': 25.0, 'blocksize': 20, 'tv_ng': 25}
-        },
-        'description': 'Optimized to remove metal artifacts'
-    },
-    
-    'ruido_alto': {
-        'algorithm': 'SART_TV',
-        'modifications': {
-            'iterations': 70,
-            'params': {'tv_lambda': 30.0, 'tv_ng': 25}
-        },
-        'description': 'Optimized for high-noise data'
-    },
-    
-    'preview_rapido': {
-        'algorithm': 'OSSART',
-        'modifications': {
-            'iterations': 20,
-            'params': {'blocksize': 40}
-        },
-        'description': 'Quick reconstruction for preview'
-    },
-    
-    'maxima_qualidade': {
-        'algorithm': 'SIRT',
-        'modifications': {'iterations': 200},
-        'description': 'Maximum quality (slow)'
-    },
-}
+# PRESET_CONFIGS removed — presets no longer used. Configure algorithms
+# directly via `get_algorithm_config()` in the main script.
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -260,36 +209,7 @@ def get_algorithm_config(algorithm_name):
     return config
 
 
-def get_preset_config(preset_name):
-    """
-    Return a preset configuration for common cases.
-
-    Args:
-        preset_name: Preset name (e.g., 'fantoma_pmma', 'metal_artifacts')
-
-    Returns:
-        dict: Full algorithm configuration with preset modifications applied
-    """
-    if preset_name not in PRESET_CONFIGS:
-        available = list(PRESET_CONFIGS.keys())
-        raise ValueError(
-            f"Preset '{preset_name}' not found!\n"
-            f"Available presets: {available}"
-        )
-
-    preset = PRESET_CONFIGS[preset_name]
-    config = get_algorithm_config(preset['algorithm'])
-
-    # Apply preset modifications
-    if 'modifications' in preset:
-        for key, value in preset['modifications'].items():
-            if key == 'params':
-                config['params'].update(value)
-            else:
-                config[key] = value
-
-    config['algorithm_name'] = preset['algorithm']
-    return config
+# get_preset_config removed — presets have been deprecated.
 
 
 def list_available_algorithms():
@@ -319,18 +239,7 @@ def list_available_algorithms():
     print("\n" + "="*80 + "\n")
 
 
-def list_presets():
-    """List all available presets."""
-    print("\n" + "="*80)
-    print("PRESET CONFIGURATIONS".center(80))
-    print("="*80)
-    
-    for name, preset in PRESET_CONFIGS.items():
-        print(f"\n  🎯 {name}")
-        print(f"     Algorithm: {preset['algorithm']}")
-        print(f"     Description: {preset['description']}")
-    
-    print("\n" + "="*80 + "\n")
+# list_presets removed — no presets available
 
 
 def print_algorithm_info(algorithm_name):

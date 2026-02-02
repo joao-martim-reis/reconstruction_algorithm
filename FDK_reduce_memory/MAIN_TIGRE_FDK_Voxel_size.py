@@ -322,21 +322,21 @@ if __name__ == "__main__":
 
     CONFIG = {
 
-        'voxel_size': 26,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
+        'voxel_size': 10,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
 
-        #'calibrated_shift_px': 5.12,
-        'calibrated_shift_px': 32,
+        'calibrated_shift_px': 24.5,
+        #'calibrated_shift_px': 32,
         #'calibrated_shift_px': (5.12),
 
         # Geometry parameters 
         'total_angle': 2 * np.pi,
-        'shift_sign': +1,
+        'shift_sign': 1,
         'DSD': 457,  # Distance Source to Detector (mm)
         'DSO': 211,  # Distance Source to Object (mm)
 
         # Downsampling reduces resolution but speeds up reconstruction
         # NOTE: This affects maximum achievable resolution!
-        'downsample': 1,
+        'downsample': 2,
         
         # Reconstruction filter
         'filter_type': 'ram_lak',  # Options: 'ram_lak', 'shepp_logan', 'cosine', 'hamming', 'hann'

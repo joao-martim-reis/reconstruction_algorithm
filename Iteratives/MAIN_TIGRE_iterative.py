@@ -35,9 +35,7 @@ from napari_filters import interactive_filter_viewer
 # Import iterative parameters
 from iterative_parameters import (
     get_algorithm_config, 
-    get_preset_config, 
     list_available_algorithms,
-    list_presets,
     print_algorithm_info
 )
 
@@ -46,9 +44,6 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from HU_conversion import HU_conversion
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#                            UTILITY FUNCTIONS
-# ═══════════════════════════════════════════════════════════════════════════
 
 def print_volume_info(volume, geo=None):
     """Prints detailed information about the reconstructed volume."""
@@ -137,22 +132,9 @@ def downsample_block_mean_pad(proj, f):
     return downsampled
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#                       RECONSTRUCTION FUNCTIONS
-# ═══════════════════════════════════════════════════════════════════════════
 
 def run_reconstruction(input_data, geo, angles, algorithm_name, config):
-    """
-    Args:
-        input_data: Projection data (angles × height × width)
-        geo: TIGRE geometry object
-        angles: Array of projection angles
-        algorithm_name: Name of algorithm (e.g., 'SIRT', 'OSSART_TV')
-        config: Algorithm configuration dictionary from iterative_parameters.py
-    
-    Returns:
-        Reconstructed volume
-    """
+  
     # Map algorithm names to TIGRE functions
     ALGORITHM_MAP = {
         # Basic algorithms
@@ -217,9 +199,6 @@ def run_reconstruction(input_data, geo, angles, algorithm_name, config):
     return volume
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#                           MAIN PIPELINE
-# ═══════════════════════════════════════════════════════════════════════════
 
 def main(tiff_folder, configurations, output_folder=None):
     """
@@ -244,12 +223,8 @@ def main(tiff_folder, configurations, output_folder=None):
 
     
     
-    # ===================================================================
-    # PHASE 1: DATA LOADING & PREPROCESSING
-    # ===================================================================
-    print("\n" + "="*70)
+
     print("PHASE 1: DATA LOADING & PREPROCESSING")
-    print("="*70)
     
     projections_raw = load_images(tiff_folder)
     
@@ -263,14 +238,10 @@ def main(tiff_folder, configurations, output_folder=None):
     
     del sino_raw
     gc.collect()
-    
-    
-    # ===================================================================
-    # PHASE 2: SPATIAL OPTIMIZATION (MEMORY REDUCTION)
-    # ===================================================================
-    print("\n" + "="*70)
+
+
     print("PHASE 2: SPATIAL OPTIMIZATION")
-    print("="*70)
+
     
     first_proj_raw = projections_raw[:, :, 0]
     crop_params = select_crop_region(first_proj_raw)
@@ -297,12 +268,9 @@ def main(tiff_folder, configurations, output_folder=None):
         projections_final = projections_norm
     
     
-    # ===================================================================
-    # PHASE 3: GEOMETRY SETUP & RECONSTRUCTION
-    # ===================================================================
-    print("\n" + "="*70)
+
     print("PHASE 3: GEOMETRY SETUP & ITERATIVE RECONSTRUCTION")
-    print("="*70)
+
     
     calibrated_shift_px = configurations['calibrated_shift_px']
     shift_val = calibrated_shift_px / f
@@ -323,23 +291,16 @@ def main(tiff_folder, configurations, output_folder=None):
         crop_params=crop_params
     )
     
-    # Validate and display geometry
-    print(f"\n{'='*70}")
+
     print(f"GEOMETRY VALIDATION")
-    print(f"{'='*70}")
     print(f"Detector dimensions (nDetector): {geo.nDetector}")
     print(f"  - Type: {type(geo.nDetector)}")
     print(f"  - Shape: {geo.nDetector.shape}")
-    print(f"  - Dtype: {geo.nDetector.dtype}")
-    print(f"  - Element [0]: {geo.nDetector[0]} (type: {type(geo.nDetector[0]).__name__})")
-    print(f"  - Element [1]: {geo.nDetector[1]} (type: {type(geo.nDetector[1]).__name__})")
     print(f"Detector pixel size (dDetector): {geo.dDetector}")
     print(f"Voxel size (dVoxel): {geo.dVoxel}")
     
-    # Prepare data for TIGRE
-    print(f"\n{'='*70}")
+
     print(f"DATA PREPARATION")
-    print(f"{'='*70}")
     print(f"Input shape: {projections_final.shape} (H, W, N_angles)")
     input_data = np.transpose(projections_final, (2, 0, 1)).copy()
     print(f"After transpose: {input_data.shape} (N_angles, H, W)")
@@ -349,17 +310,11 @@ def main(tiff_folder, configurations, output_folder=None):
     gc.collect()
     
     
-    # ===================================================================
-    # ITERATIVE RECONSTRUCTION
-    # ===================================================================
     volume = run_reconstruction(input_data, geo, angles, algorithm_name, algo_config)
-    
     print_volume_info(volume, geo)
     
     
-    # ===================================================================
-    # PHASE 4: POST-PROCESSING & EXPORT
-    # ===================================================================
+
     print("\n" + "="*70)
     print("PHASE 4: POST-PROCESSING & EXPORT")
     print("="*70)
@@ -421,15 +376,10 @@ def main(tiff_folder, configurations, output_folder=None):
     return volume
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#                              MAIN EXECUTION
-# ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     
-    # ===================================================================
-    # CONFIGURATION
-    # ===================================================================
+
     CONFIG = {
         # PRIMARY INPUT: Desired voxel size
         'voxel_size': 26,  # μm
@@ -451,16 +401,12 @@ if __name__ == "__main__":
         'filtered_volumes_folder': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\Filtered_volumes.Nift'
     }
     
-    
-    # ===================================================================
-    # ALGORITHM SELECTION
-    # ===================================================================
-    # 
+
     #Choose algorithm directly
     
     # BASIC algorithms (no TV):
     #algorithm_config = get_algorithm_config('SIRT')       # Classic, balanced
-    algorithm_config = get_algorithm_config('CGLS')       # Fast, good for details
+    #algorithm_config = get_algorithm_config('CGLS')       # Fast, good for details
     #algorithm_config = get_algorithm_config('LSQR')       # Numerically stable
     #algorithm_config = get_algorithm_config('LSMR')       # Improved over LSQR
     #algorithm_config = get_algorithm_config('OSSART')     # Very fast (preview)
@@ -469,22 +415,12 @@ if __name__ == "__main__":
     
     # TV-regularized algorithms (reduce artifacts):
     #algorithm_config = get_algorithm_config('OSSART_TV')  # RECOMMENDED for metal
-    #algorithm_config = get_algorithm_config('SART_TV')    # More precise than OSSART_TV
+    algorithm_config = get_algorithm_config('SART_TV')    # More precise than OSSART_TV
     #algorithm_config = get_algorithm_config('ASD_POCS')   # Severe artifacts
     #algorithm_config = get_algorithm_config('AWASD_POCS') # Adaptive variant
     
     
-    # OPTION 2: Select a PRESET configuration
-    # ──────────────────────────────────
-    # Uncomment one of the lines below to use a predefined preset:
-    
-    #algorithm_config = get_preset_config('fantoma_pmma')      # Optimized for PMMA
-    #algorithm_config = get_preset_config('fantoma_agua')      # Optimized for water
-    #algorithm_config = get_preset_config('padrao_barras')     # Resolution test
-    #algorithm_config = get_preset_config('metal_artifacts')   # Remove metal artifacts
-    #algorithm_config = get_preset_config('ruido_alto')        # High-noise data
-    #algorithm_config = get_preset_config('preview_rapido')    # Quick preview
-    #algorithm_config = get_preset_config('maxima_qualidade')  # Maximum quality
+    # Preset configurations removed — select algorithms via `get_algorithm_config()`
     
     
     # Determine algorithm name and add to CONFIG
@@ -505,12 +441,13 @@ if __name__ == "__main__":
     
 
     # SELECT DATASET
-
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\45kv+0.45mA\Fantoma_agua_destilada'
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_v3' #bar pattern
     #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA+haste'
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_centrado'
+    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_centrado'
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\test3' 
+
 
     vol = main(folder, CONFIG, output_folder=CONFIG.get('output_folder_NiFT'))
