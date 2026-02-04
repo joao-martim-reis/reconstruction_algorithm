@@ -154,5 +154,10 @@ Update the `CONFIG` dictionary and the input folder path in `MAIN_TIGRE_FDK_crop
 - The beam-hardening and cupping corrections included here are simplified, heuristic post-processing methods intended for exploratory analysis; quantitative CT workflows typically require calibration-based or physics-informed corrections.
 - The pipeline assumes a circular trajectory and uses FDK; this is not exact for non-circular trajectories or severely truncated projection data.
 
+## Common Issues and Troubleshooting
+
+### Negative Values in Reconstructed Volumes
+It is common for reconstructed CT volumes to contain small negative values in background regions. These negatives can arise from numerical effects of the reconstruction filter (e.g., Ram-Lak ringing), slight mis-centering/shift errors, noise, or algorithmic artifacts. Small negative values are usually not a sign of catastrophic failure; however, if you require strictly non-negative data, it is possible to clip (`volume[volume<0]=0`), but clipping may hide underlying issues that are better fixed (I0 calibration, center of rotation, filter choice, etc.).
+
 ## References
 When using this pipeline in academic work, please cite the canonical FDK literature and the TIGRE toolbox, as well as any relevant dataset or instrumentation sources.

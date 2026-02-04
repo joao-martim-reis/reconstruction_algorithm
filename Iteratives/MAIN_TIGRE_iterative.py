@@ -1,18 +1,3 @@
-"""
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                      MAIN SCRIPT - ITERATIVE RECONSTRUCTION                  ║
-║                                                                              ║
-║  Consolidated script for all iterative algorithms (basic and TV-regularized) ║
-║  Algorithm parameters are loaded automatically from iterative_parameters.py  ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-
-
-1. Choose the algorithm in the "ALGORITHM SELECTION" section
-2. Configure geometry and paths in the "CONFIGURATION" section
-3. Select the dataset in the "SELECT YOUR DATASET" section
-4. Run the script
-"""
-
 import numpy as np
 import os
 import sys
@@ -30,55 +15,44 @@ from geometry_reconstruction_Voxel_size import setup_geometry
 from crop_projections import select_crop_region, apply_crop_to_projections
 from data_processing_FDK_3D import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
 from export_volumes import export_volume_to_nii, export_volume_HU
-from napari_filters import interactive_filter_viewer
-
-# Import iterative parameters
-from iterative_parameters import (
-    get_algorithm_config, 
-    list_available_algorithms,
-    print_algorithm_info
-)
-
-# Import HU conversion function
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from HU_conversion import HU_conversion
-
-
+from iterative_parameters import get_algorithm_config
 
 def print_volume_info(volume, geo=None):
-    """Prints detailed information about the reconstructed volume."""
-    print("\n" + "="*60)
+    """
+    Prints detailed information about the reconstructed volume.
+    """
     print("RECONSTRUCTED VOLUME INFORMATION")
-    print("="*60)
     print(f"Dtype: {volume.dtype}")
     print(f"Dimensions: {volume.shape}")
-    print("="*60 + "\n") 
-    if geo:
-        print(f"\nGeometric information:")
-        print(f"  - Voxel size: [{geo.dVoxel[0]:.3f}, {geo.dVoxel[1]:.3f}, {geo.dVoxel[2]:.3f}] mm")
-        print(f"  - Number of voxels: {geo.nVoxel}")
-        print(f"  - Physical dimensions: [{geo.sVoxel[0]:.3f}, {geo.sVoxel[1]:.3f}, {geo.sVoxel[2]:.3f}] mm")
-        print("="*60 + "\n")
+    print(f"\nGeometric information:")
+    print(f"  - Voxel size: [{geo.dVoxel[0]:.3f}, {geo.dVoxel[1]:.3f}, {geo.dVoxel[2]:.3f}] mm")
+    print(f"  - Number of voxels: {geo.nVoxel}")
+    print(f"  - Physical dimensions: [{geo.sVoxel[0]:.3f}, {geo.sVoxel[1]:.3f}, {geo.sVoxel[2]:.3f}] mm")
+
 
 
 def normalize_projections(projections_raw, I0_override=None):
-    """Normalizes projections using -log(I/I0)."""
+    """
+    Normalizes projections using -log(I/I0).
+    This function receives ALREADY CROPPED projections, drastically reducing the number of mathematical operations.
+    """
     print("--> Normalizing cropped projections...")
-
+    print(f"    Input shape: {projections_raw.shape}, Memory size: {projections_raw.nbytes / 1e6:.1f} MB")
 
     if I0_override is None:
         I0 = float(np.percentile(projections_raw, 1))
     else:
         I0 = float(I0_override)
 
+    # Convert to float32 for calculations (lighter than float64)
     projections_raw = projections_raw.astype(np.float32)
-    ratio = projections_raw / (I0 + 1e-6)
-    ratio = np.clip(ratio, 1e-6, 1.2)
+    ratio = projections_raw / (I0 + 1e-6)# Avoid division by zero
+    ratio = np.clip(ratio, 1e-6, 1.2)# np clip to avoid log(0) and extreme values
     
-    projections_norm = -np.log(ratio)
-    projections_norm[projections_norm < 0] = 0
-    
+    projections_norm = -np.log(ratio) # Beer-Lambert law: -log(I/I0)
+    projections_norm[projections_norm < 0] = 0 # Remove negative values (artifacts)
     print(f"    ✓ Normalization complete")
+
     return projections_norm
 
 
@@ -123,229 +97,127 @@ def downsample_block_mean_pad(proj, f):
     blocks = proj_p.reshape(downsampling_h, f, downsampling_w, f, Angles) 
 
     # Step 2: compute the mean across the two block axes (f, f) -> axes 1 and 3
-    # This averages each f×f block into a single pixel, producing shape
-    # (downsampling_h, downsampling_w, A).
+    # This averages each f×f block into a single pixel, producing shape (downsampling_h, downsampling_w, A).
     downsampled = blocks.mean(axis=(1, 3))
 
     # Now `downsampled` has shape (H//f, W//f, A) and contains the block-wise averaged projections.
-    
     return downsampled
 
-
-
-def run_reconstruction(input_data, geo, angles, algorithm_name, config):
-  
-    # Map algorithm names to TIGRE functions
-    ALGORITHM_MAP = {
-        # Basic algorithms
-        'SIRT': algs.sirt,
-        'CGLS': algs.cgls,
-        'LSQR': algs.lsqr,
-        'LSMR': algs.lsmr,
-        'OSSART': algs.ossart,
-        'SART': algs.sart,
-        # TV-regularized algorithms
-        'OSSART_TV': algs.ossart_tv,
-        'SART_TV': algs.sart_tv,
-        'ASD_POCS': algs.asd_pocs,
-        'AWASD_POCS': algs.awasd_pocs,
-    }
-    
-    if algorithm_name not in ALGORITHM_MAP:
-        raise ValueError(
-            f"Unknown algorithm: {algorithm_name}\n"
-            f"Available: {list(ALGORITHM_MAP.keys())}"
-        )
-    
-    alg_function = ALGORITHM_MAP[algorithm_name]
-    iterations = config['iterations']
-    category = config['category']
-    
-    # Print header
-    if category == 'tv':
-        print(f"RUNNING {algorithm_name.upper()} RECONSTRUCTION (TV-REGULARIZED)")
-    else:
-        print(f"RUNNING {algorithm_name.upper()} RECONSTRUCTION")
-    print(f"  Iterations: {iterations}")
-
-    # Prepare algorithm parameters
-    algo_params = {}
-    
-    # Transforms parameters defined in the dictionary to function arguments
-    if 'params' in config and config['params']:
-        params = config['params']
-        
-        if 'blocksize' in params:
-            algo_params['blocksize'] = params['blocksize']
-
-        if 'tv_lambda' in params:
-            algo_params['lmbda'] = params['tv_lambda']
-        
-        if 'tv_ng' in params:
-            algo_params['ng'] = params['tv_ng']
-
-        if 'asd_alpha' in params:
-            algo_params['alpha'] = params['asd_alpha']
-        
-        if 'asd_epsilon' in params:
-            algo_params['epsilon'] = params['asd_epsilon']
-    
-    # Run reconstruction
-    print(f"\n  Starting reconstruction...")
-    
-    volume = alg_function(input_data, geo, angles, iterations, **algo_params)
-    
-    print(f"  ✓ Reconstruction complete!")
-    return volume
 
 
 
 def main(tiff_folder, configurations, output_folder=None):
     """
-    Main unified iterative reconstruction pipeline.
-    
-    Supports ALL iterative algorithms:
-    - Basic: SIRT, CGLS, LSQR, LSMR, OSSART, SART
-    - TV: OSSART_TV, SART_TV, ASD_POCS, AWASD_POCS
-    
-    The algorithm and its parameters are automatically loaded from
-    iterative_parameters.py based on the 'algorithm_config' in configurations.
+    Main ITERATIVE reconstruction pipeline (CORRECTED VERSION)
+    This version uses VOXEL SIZE as the primary input parameter instead of PIXEL SIZE.
+    This makes it easier to compare with commercial micro-CT systems and published papers.
+
+    PHASE 1: Data Loading & Preprocessing
+    PHASE 2: Spatial Optimization (Memory Reduction)
+    PHASE 3: Geometry & Reconstruction
+    PHASE 4: Post-Processing & Export
     """
     
-    # Get algorithm configuration
-    algo_config = configurations['algorithm_config']
-    algorithm_name = algo_config['algorithm_name']
     
-    print(f"Algorithm: {algorithm_name}")
-    print(f"Iterations: {algo_config['iterations']}")
-    if algo_config['params']:
-        print(f"Parameters: {algo_config['params']}")
-
-    
-    
-
     print("PHASE 1: DATA LOADING & PREPROCESSING")
     
-    projections_raw = load_images(tiff_folder)
-    
-    # Safety check
-    if projections_raw is None:
-        raise ValueError(f"Failed to load projections from folder: {tiff_folder}")
-    
-    sino_raw = generate_collapsed_sinogram(projections_raw)
-    roi_background = selecionar_roi_I0(sino_raw)
+    projections_raw = load_images(tiff_folder)  # Step 1.1: Load raw TIFF projection images
+    sino_raw = generate_collapsed_sinogram(projections_raw)  # Step 1.2: Generate collapsed sinogram for I0 reference selection
+    roi_background = selecionar_roi_I0(sino_raw)  # Step 1.3: User selects background ROI and calculates mean I0 value
     mean_I0 = get_I0_from_roi(sino_raw, roi_background, projections_raw.shape[0])
-    
-    del sino_raw
+    del sino_raw # Clean up: free sinogram memory
     gc.collect()
-
-
-    print("PHASE 2: SPATIAL OPTIMIZATION")
-
     
-    first_proj_raw = projections_raw[:, :, 0]
-    crop_params = select_crop_region(first_proj_raw)
-    projections_cropped_raw = apply_crop_to_projections(projections_raw, crop_params)
     
+    print("\nPHASE 2: SPATIAL OPTIMIZATION (MEMORY REDUCTION)")
+
+    crop_params = select_crop_region(projections_raw[:, :, 0])  # Step 2.1: Interactively define crop region on first projection
+    projections_cropped_raw = apply_crop_to_projections(projections_raw, crop_params)  # Step 2.2: Apply crop to ALL raw projections
     del projections_raw
     gc.collect()
     
-    projections_norm = normalize_projections(projections_cropped_raw, I0_override=mean_I0)
-    
+    projections_norm = normalize_projections(projections_cropped_raw, I0_override=mean_I0)  # Step 2.3: Normalize cropped projections using Beer-Lambert law: -log(I/I0)
     del projections_cropped_raw
     gc.collect()
     
-    # Downsampling
-    f = configurations['downsample']
-    
+    f = configurations['downsample']  # Step 2.4: Optional downsampling (applied AFTER crop for maximum efficiency) 
     if f > 1:
         print(f"Downsampling by factor {f}x...")
-        projections_final = downsample_block_mean_pad(projections_norm, f).astype(np.float32)
-        print(f"      Final shape: {projections_final.shape}")
+        print(f"This will reduce maximum achievable resolution")
+        projections_final = downsample_block_mean_pad(projections_norm, f).astype(np.float32) #convert to float32 to save memory
+        print(f"Final shape: {projections_final.shape}")
         del projections_norm
         gc.collect()
+    elif f < 1:
+        print(f"Error: Downsampling factor must be >=1 or equal to 1")
+        return None
     else:
         projections_final = projections_norm
     
     
 
-    print("PHASE 3: GEOMETRY SETUP & ITERATIVE RECONSTRUCTION")
-
+    print("PHASE 3: GEOMETRY SETUP & RECONSTRUCTION (VOXEL-SIZE-FIRST)")
     
-    calibrated_shift_px = configurations['calibrated_shift_px']
+    calibrated_shift_px = configurations['calibrated_shift_px']  # Step 3.1: Calculate detector shift (adjusted for downsampling factor)
     shift_val = calibrated_shift_px / f
     print(f" Detector shift calculated: {shift_val:.3f} pixels")
     
-    effective_voxel_size = configurations['voxel_size'] * f
+    effective_voxel_size = configurations['voxel_size'] * f  # Step 3.2: Adjust voxel size for downsampling
     print(f" Voxel size adjustment: {configurations['voxel_size']:.2f} μm × {f} = {effective_voxel_size:.2f} μm")
     
-    geo, angles = setup_geometry(
+    geo, angles = setup_geometry(  # Step 3.3: Setup TIGRE geometry with ADJUSTED voxel size
         projections_final.shape, 
-        effective_voxel_size,
+        effective_voxel_size,  # ← Already adjusted for downsampling
         configurations['DSD'], 
         configurations['DSO'], 
         shift_val, 
         configurations['total_angle'], 
         shift_sign=configurations['shift_sign'],
-        downsample_factor=configurations['downsample'],
-        crop_params=crop_params
+        downsample_factor=configurations['downsample'],  # ← For Nyquist limit calculation
+        crop_params=crop_params  # ← Adjusts detector offset for cropped region
     )
-    
 
-    print(f"GEOMETRY VALIDATION")
-    print(f"Detector dimensions (nDetector): {geo.nDetector}")
-    print(f"  - Type: {type(geo.nDetector)}")
-    print(f"  - Shape: {geo.nDetector.shape}")
-    print(f"Detector pixel size (dDetector): {geo.dDetector}")
-    print(f"Voxel size (dVoxel): {geo.dVoxel}")
-    
-
-    print(f"DATA PREPARATION")
-    print(f"Input shape: {projections_final.shape} (H, W, N_angles)")
-    input_data = np.transpose(projections_final, (2, 0, 1)).copy()
-    print(f"After transpose: {input_data.shape} (N_angles, H, W)")
-    print(f"Expected by TIGRE: ({len(angles)}, {geo.nDetector[0]}, {geo.nDetector[1]})")
-    
+    input_data = np.transpose(projections_final, (2, 0, 1)).copy()  # Step 3.4: Prepare data for TIGRE (transpose to TIGRE format: angles × height × width)
     del projections_final
     gc.collect()
-    
-    
-    volume = run_reconstruction(input_data, geo, angles, algorithm_name, algo_config)
-    print_volume_info(volume, geo)
-    
-    
 
-    print("\n" + "="*70)
+
+    # Step 3.5: Load algorithm configuration
+    algorithm_name = configurations['algorithm']
+    algo_config = get_algorithm_config(algorithm_name)
+    
+    print(f"ITERATIVE ALGORITHM: {algorithm_name}")
+    print(f"Category: {algo_config['category']}")
+    print(f"Iterations: {algo_config['iterations']}")
+
+    if algo_config['params']:
+        print(f"Parameters: {algo_config['params']}")
+
+    print(f"\nRunning {algorithm_name} algorithm...")
+    algo_function = getattr(algs, algo_config['function_name'])
+
+    algo_kwargs = {
+        'niter': algo_config['iterations'],
+        **algo_config['params']  # Unpack any additional parameters
+    }
+    
+  
+    volume = algo_function(input_data, geo, angles, **algo_kwargs)
+    print_volume_info(volume, geo)
+
+    
     print("PHASE 4: POST-PROCESSING & EXPORT")
-    print("="*70)
     
-    # Step 4.1: NAPARI visualization
     print(f"Opening Napari viewer...")
-    voxel_scale = (geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2])
     
-    # Interactive filtering (commented out for now)
-    # filter_choice = input("\nDo you want to use INTERACTIVE filtering? (y/n): ").strip().lower()
-    # if filter_choice == 'y':
-    #     filtered_folder = configurations.get('filtered_volumes_folder')
-    #     viewer, final_filter_params = interactive_filter_viewer(
-    #         volume, 
-    #         name=f"{algorithm_name} Volume", 
-    #         scale=voxel_scale, 
-    #         nii_filepath=None, 
-    #         filtered_output_folder=filtered_folder
-    #     )
-    #     napari.run()
-    #     from napari_filters import print_applied_filters_summary
-    #     print_applied_filters_summary(final_filter_params)
-    # else:
-    
-    # View reconstructed 3D volume
-    viewer = napari.Viewer()
-    viewer.add_image(volume, scale=voxel_scale, name=f"{algorithm_name} Volume")
+    # Voxel scale for napari
+    voxel_scale = (geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2]) if volume.ndim == 3 else (geo.dVoxel[1], geo.dVoxel[2])
+    viewer = napari.Viewer()  # Step 4.1: NAPARI visualization
+    viewer.add_image(volume, scale=voxel_scale, name="CT Volume")
     napari.run()
     
-    # Step 4.2: Optional NIfTI export
-    export_choice = input("\nDo you want to export the volume to .nii format? (y/n): ").strip().lower()
+
+    export_choice = input("\nDo you want to export the volume to .nii format? (y/n): ").strip().lower()  # Step 4.2: Optional NIfTI export
     nii_filepath = None
     if export_choice == 'y':
         nii_filepath = export_volume_to_nii(volume, geo, tiff_folder, base_output=output_folder)
@@ -353,101 +225,40 @@ def main(tiff_folder, configurations, output_folder=None):
     else:
         print(f"NIfTI export skipped")
     
-    
-    # Step 4.3: Optional HU conversion
-    if export_choice == 'y' and nii_filepath is not None:
+
+    if export_choice == 'y' and nii_filepath is not None:  # Step 4.3: Optional Hounsfield Unit (HU) conversion
         hu_choice = input("\nDo you want to also export in Hounsfield Units (HU)? (y/n): ").strip().lower()
         if hu_choice == 'y':
-            print(f"HU CONVERSION SETUP")
-            print("      Please provide the gray scale values measured from the reconstruction:")
-            water_val = float(input("      Enter gray scale value for WATER: "))
-            air_val = float(input("      Enter gray scale value for AIR: "))
-            
+            print("Please provide the gray scale values measured from the reconstruction:")
+            water_val = float(input("Enter gray scale value for WATER: "))
+            air_val = float(input("Enter gray scale value for AIR: "))
             export_volume_HU(nii_filepath, volume, water_val, air_val)
-            print(f"      Volume converted to Hounsfield Units and exported")
+            print(f"Volume converted to Hounsfield Units and exported")
         else:
             print(f"HU conversion skipped")
-    
-    
-    print("\n" + "="*70)
+
+
     print("RECONSTRUCTION PIPELINE COMPLETED")
-    print("="*70 + "\n")
-    
+
     return volume
 
 
-
 if __name__ == "__main__":
-    
+
 
     CONFIG = {
-        # PRIMARY INPUT: Desired voxel size
-        'voxel_size': 26,  # μm
-        
-        # Geometry parameters
-        'DSD': 457,  # mm - Source to Detector Distance
-        'DSO': 235,  # mm - Source to Object Distance
-        
-        # Downsampling
-        'downsample': 1,  # Factor for downsampling (1 = no downsampling)
-        
-        # Acquisition parameters
-        'total_angle': 2 * np.pi,  # Total rotation angle (radians)
-        'calibrated_shift_px': 15.6,  # Detector shift (pixels)
-        'shift_sign': 1,  # Sign of the shift (+1 or -1)
-        
-        # Output folders
+        'voxel_size': 25,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
+        'calibrated_shift_px': 24.5,
+        'total_angle': 2 * np.pi,
+        'shift_sign': 1,  # Try -1 if reconstruction looks wrong
+        'DSD': 457,  # Distance Source to Detector (mm)
+        'DSO': 211,  # Distance Source to Object (mm)
+        'downsample': 1, # NOTE: This affects maximum achievable resolution!
+        'algorithm': 'OSSART_TV',  # ← CHANGE THIS to select algorithm
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift',
         'filtered_volumes_folder': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\Filtered_volumes.Nift'
     }
     
-
-    #Choose algorithm directly
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_nivel_2' #bar pattern
     
-    # BASIC algorithms (no TV):
-    #algorithm_config = get_algorithm_config('SIRT')       # Classic, balanced
-    #algorithm_config = get_algorithm_config('CGLS')       # Fast, good for details
-    #algorithm_config = get_algorithm_config('LSQR')       # Numerically stable
-    #algorithm_config = get_algorithm_config('LSMR')       # Improved over LSQR
-    #algorithm_config = get_algorithm_config('OSSART')     # Very fast (preview)
-    #algorithm_config = get_algorithm_config('SART')       # Alternative to SIRT
-    
-    
-    # TV-regularized algorithms (reduce artifacts):
-    #algorithm_config = get_algorithm_config('OSSART_TV')  # RECOMMENDED for metal
-    algorithm_config = get_algorithm_config('SART_TV')    # More precise than OSSART_TV
-    #algorithm_config = get_algorithm_config('ASD_POCS')   # Severe artifacts
-    #algorithm_config = get_algorithm_config('AWASD_POCS') # Adaptive variant
-    
-    
-    # Preset configurations removed — select algorithms via `get_algorithm_config()`
-    
-    
-    # Determine algorithm name and add to CONFIG
-    algorithm_name = algorithm_config.get('algorithm_name') or algorithm_config.get('algorithm')
-    if algorithm_name is None:
-        raise ValueError("Could not determine algorithm name from configuration")
-
-    algorithm_config['algorithm_name'] = algorithm_name
-    CONFIG['algorithm_config'] = algorithm_config
-    
-    
-    # HELP FUNCTIONS (uncomment to view information)
-    #list_available_algorithms()
-    #list_presets()
-    
-    # Print detailed information about an algorithm:
-    #print_algorithm_info('OSSART_TV')
-    
-
-    # SELECT DATASET
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_simples_5'
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\Phantom_800_1'
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\45kv+0.45mA\Fantoma_agua_destilada'
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_v3' #bar pattern
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+DOD_246\PMMA+haste'
-    #folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_centrado'
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\test3' 
-
-
     vol = main(folder, CONFIG, output_folder=CONFIG.get('output_folder_NiFT'))

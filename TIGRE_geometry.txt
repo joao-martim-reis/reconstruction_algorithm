@@ -1,0 +1,119 @@
+**TIGRE GEOMETRY PROPERTIES**
+================================================================================
+**geo.DSD** - Distance Source to Detector
+  Units: millimeters (mm)
+--------------------------------------------------------------------------------
+**geo.DSO** - Distance Source to Object (Rotation Center)
+  Units: millimeters (mm)
+--------------------------------------------------------------------------------
+**geo.nDetector** - Number of Detector Pixels
+  Arguments: [number_of_rows, number_of_columns]
+  Units: pixels (integer count)
+  How to get it: projections.shape[0:2] AFTER crop and downsample
+  Related to voxel size: NO
+  Related to real detector: YES (but after image processing)
+  CRITICAL: Must exactly match your input projection array dimensions!
+--------------------------------------------------------------------------------
+**geo.dDetector** - Detector Pixel Size (Physical)
+  What it is: Physical size (in mm) of each pixel on the detector
+  Arguments: [pixel_height_mm, pixel_width_mm]
+  Units: millimeters (mm)
+  Related to real detector: YES 
+  Changes with voxel size: NO - NEVER!
+  CRITICAL: This is PHYSICAL REALITY - independent of reconstruction choices!
+  Must change accordingly to the downsample factor
+--------------------------------------------------------------------------------
+**geo.sDetector** - Total Detector Size (Physical)
+  What it is: Total physical dimensions of the detector panel
+  Arguments: [total_height_mm, total_width_mm]
+  Units: millimeters (mm)
+  geo.sDetector = geo.nDetector × geo.dDetector
+--------------------------------------------------------------------------------
+**geo.offDetector** - Detector Offset (Center-of-Rotation Correction)
+  What it is: How far the detector center is shifted from the rotation axis
+  Arguments: [vertical_offset_mm, horizontal_offset_mm]
+  Units: millimeters (mm)
+  Related to voxel size: NO
+  Related to real detector: YES (physical geometry correction)
+  Changes with voxel size: NO
+--------------------------------------------------------------------------------
+**geo.rotDetector** - Detector Panel Rotation
+  What it is: Rotation angles of the detector panel (pitch, roll, yaw)
+  Arguments: [pitch_radians, roll_radians, yaw_radians]
+  Units: radians
+  Related to voxel size: NO
+  Related to real detector: YES (if detector is tilted)
+--------------------------------------------------------------------------------
+**geo.dVoxel** - Voxel Size (Reconstruction Resolution)
+  What it is: Physical size of each voxel in your reconstructed volume
+  Arguments: [x_size_mm, y_size_mm, z_size_mm]
+  Units: millimeters (mm)
+  How to get it: User choice (desired resolution) × downsample_factor
+  Related to voxel size: THIS IS THE VOXEL SIZE!
+  Related to real detector: NO
+  Changes with voxel size: YES - this is what you're changing!
+  Constraint - Nyquist limit:
+    minimum_useful_voxel_size = geo.dDetector / (geo.DSD / geo.DSO)
+    Going smaller than this gives no additional resolution!
+--------------------------------------------------------------------------------
+**geo.nVoxel** - Number of Voxels (Volume Dimensions)
+  What it is: How many voxels (x × y × z) in your reconstructed volume
+  Arguments: [x_voxels, y_voxels, z_voxels]
+  Units: voxels (integer count)
+  Related to voxel size: YES - smaller voxels = more voxels!
+  Related to real detector: NO
+  geo.nVoxel = ceil(geo.sDetector / geo.dVoxel)
+
+  Example calculation:
+    Detector is 75.0 mm wide
+    Voxel size is 0.100 mm
+    Number of voxels needed: ceil(75.0 / 0.100) = 750 voxels
+  Memory warning:
+    Total voxels = 750 × 750 × 750 = 421,875,000 voxels
+    Memory ≈ 421M × 4 bytes = 1.7 GB
+  If you change to 0.050 mm voxels:
+    Number of voxels: ceil(75.0 / 0.050) = 1500 voxels
+    Total voxels = 1500³ = 3,375,000,000 voxels
+    Memory ≈ 13.5 GB (may exceed GPU memory!)
+--------------------------------------------------------------------------------
+**geo.sVoxel** - Total Volume Size (Physical)
+  Total physical dimensions of the reconstructed volume
+  Arguments: [x_size_mm, y_size_mm, z_size_mm]
+  Units: millimeters (mm)
+  Related to voxel size: Indirectly (changes with nVoxel)
+  Related to real detector: NO
+  geo.sVoxel = geo.nVoxel × geo.dVoxel
+--------------------------------------------------------------------------------
+
+**geo.offOrigin** - Volume Center Offset
+  What it is: Offset of volume center from the rotation axis
+  Arguments: [x_offset_mm, y_offset_mm, z_offset_mm]
+  Units: millimeters (mm)
+  When to use: If you want to reconstruct only a specific region of interest
+
+
+
+**KEY PRINCIPLES**
+================================================================================
+
+1. HARDWARE PROPERTIES (Fixed - Never change):
+   - geo.DSD, geo.DSO: Physical measurements of your CT scanner
+   - These define your system's magnification = DSD / DSO
+
+2. DETECTOR PROPERTIES (Fixed by hardware + image processing):
+   - geo.nDetector: From your projection image dimensions (after crop/downsample)
+   - geo.dDetector: Real detector pixel × downsample factor
+   - geo.sDetector: Calculated (nDetector × dDetector)
+   - geo.offDetector: Center-of-rotation calibration (in physical mm)
+   - geo.rotDetector: Usually [0,0,0] unless detector is tilted
+   
+   CRITICAL: These describe PHYSICAL REALITY and are INDEPENDENT of voxel size!
+
+3. VOLUME PROPERTIES (Your reconstruction choice):
+   - geo.dVoxel: YOUR CHOICE of reconstruction resolution
+   - geo.nVoxel: Calculated to cover field of view (sDetector / dVoxel)
+   - geo.sVoxel: Calculated (nVoxel × dVoxel), should ≈ sDetector
+   - geo.offOrigin: Usually [0,0,0]
+   
+   These CHANGE when you change voxel size, but DETECTOR properties don't!
+

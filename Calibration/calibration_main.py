@@ -113,4 +113,4 @@ def main(parent_folder=None):
 
 if __name__ == "__main__":
     #main(parent_folder=r"C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_calhas\45kv+0.45mA\calibracao")
-    main(parent_folder=r"C:\Users\joaomartimreis\Desktop\Joao_CT\test1")
+    main(parent_folder=r"C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\te")
