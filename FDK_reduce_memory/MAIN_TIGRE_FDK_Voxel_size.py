@@ -228,12 +228,12 @@ if __name__ == "__main__":
 
     CONFIG = {
         'voxel_size': 25,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
-        'calibrated_shift_px': -7, #5.12 / 24.5 / 19.5 (bar pattern nivel 2) / 21.5 (Fantoma agua) / -20.922 (bar pattern)
-        'total_angle': 2 * np.pi,
+        'calibrated_shift_px': 40, #5.12 / 24.5 / 19.5 (bar pattern nivel 2) / 21.5 (Fantoma agua) / -20.922 (bar pattern horizontal 1) / -9.5 (bar patter 3) / 75 bar pattern horizontal / -1 bar pattern horizontal 2
         'shift_sign': 1,
-        'DSD': 457,  # Distance Source to Detector (mm)\
-        'DSO': 211,  # Distance Source to Object (mm)
-        'downsample': 2, # NOTE: This affects maximum achievable resolution!
+        'total_angle': 2 * np.pi,  # Total rotation angle in degrees (e.g., 180, 360)
+        'DSD': (457+31),  # Distance Source to Detector (mm)
+        'DSO': (224+31),  # Distance Source to Object (mm)
+        'downsample': 1, # NOTE: This affects maximum achievable resolution!
         'filter_type': 'ram_lak',  # Options: 'ram_lak', 'shepp_logan', 'cosine', 'hamming', 'hann'
         'detector_tilt': 0,  # Detector tilt in radians (from calculate_detector_tilt.py)
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift',
@@ -242,6 +242,6 @@ if __name__ == "__main__":
 
 
 
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\haste_metalica'  # Path to your TIFF projections folder
+    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Motor_grande'  # Path to your TIFF projections folder
 
     vol = main(folder, CONFIG, output_folder=CONFIG.get('output_folder_NiFT'))

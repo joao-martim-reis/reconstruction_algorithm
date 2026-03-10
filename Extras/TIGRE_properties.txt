@@ -1,0 +1,590 @@
+TIGRE RECONSTRUCTION ALGORITHMS - COMPLETE REFERENCE
+
+REFERENCES:
+===========
+1. Official TIGRE GitHub Repository
+   https://github.com/CERN/TIGRE
+
+2. TIGRE Documentation and Python Demos
+   https://tigre.readthedocs.io/
+
+3. TIGRE Source Code
+   https://github.com/CERN/TIGRE/tree/master/Python/tigre/algorithms/
+
+4. Primary Research Paper
+   "TIGRE: A MATLAB-GPU toolbox for CBCT image reconstruction"
+   Biguri et al., Biomedical Physics & Engineering Express, 2016
+
+
+
+
+TIGRE AVAILABLE ALGORITHMS
+
+import tigre.algorithms as algs
+
+Available algorithms:
+['ab_gmres', 'art_family_algorithms', 'asd_pocs', 'aw_pcsd', 'awasd_pocs', 
+'ba_gmres', 'cgls', 'fbp', 'fdk', 'fista', 'hybrid_flsqr_tv', 'hybrid_lsqr', 
+'irn_tv_cgls', 'ista', 'ista_algorithms', 'iterative_recon_alg', 
+'iterativereconalg', 'krylov_subspace_algorithms', 'lsmr', 'lsqr', 'mlem', 
+'os_asd_pocs', 'os_aw_pcsd', 'os_awasd_pocs', 'os_pcsd', 'ossart', 
+'ossart_tv', 'pcsd', 'pocs_algorithms', 'sart', 'sart_tv', 
+'single_pass_algorithms', 'sirt', 'statistical_algorithms']
+
+Usage:
+volume = algs.[algorithm](proj, geo, angles, ...)
+
+
+COMMON ARGUMENTS FOR ALL ALGORITHMS
+All TIGRE reconstruction algorithms share these MANDATORY arguments:
+
+1. proj (np.array, dtype=float32)
+   - Shape: (n_angles, detector_rows, detector_cols)
+   - Description: Normalized projection data (-log(I/I0))
+   - Note: Must be in TIGRE format (angles first dimension)
+
+2. geo (tigre.geometry object)
+   - Description: Complete geometry specification
+   - Create with: geo = tigre.geometry(mode='cone')
+
+3. angles (np.array, dtype=float32)
+   - Shape: (n_angles,)
+   - Units: radians
+   - Description: Rotation angles for each projection
+   - Example: np.linspace(0, 2*np.pi, 360, endpoint=False)
+
+4. niter (int) - FOR ITERATIVE ALGORITHMS ONLY
+   - Description: Number of iterations to run
+   - Typical range: 20-100 iterations
+   - Note: Not used for FDK (direct method)
+
+COMMON OUTPUT:
+All algorithms return:
+- volume (np.array, dtype=float32)
+  - Shape: (geo.nVoxel[0], geo.nVoxel[1], geo.nVoxel[2])
+  - Units: Linear attenuation coefficient (mm^-1)
+
+Some iterative algorithms can return:
+- If computel2=True: returns (volume, l2_errors) tuple
+
+
+1. FILTERED BACKPROJECTION ALGORITHMS
+--------------------------------------------------------------------------------
+algs.fdk() - Feldkamp-Davis-Kress Algorithm
+--------------------------------------------------------------------------------
+
+DESCRIPTION:
+  Fast, direct reconstruction method for cone-beam CT. Based on filtered
+  backprojection.
+
+USAGE:
+  volume = algs.fdk(proj, geo, angles, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj: projection data (n_angles, rows, cols)
+  - geo: geometry object
+  - angles: rotation angles in radians
+
+OPTIONAL ARGUMENTS:
+  - filter (str): Reconstruction filter type
+    Options: 'ram_lak' (default), 'shepp_logan', 'cosine', 'hamming', 'hann'
+    Effect: Different trade-offs between sharpness and noise
+    
+  - verbose (bool): Print progress information
+    Default: True
+
+OUTPUT:
+  - volume (np.array): 3D reconstructed volume
+    Shape: (geo.nVoxel[0], geo.nVoxel[1], geo.nVoxel[2])
+
+WHEN TO USE:
+  - High-quality data with sufficient angular sampling
+  - Fast reconstruction needed
+  - Full 360° rotation
+
+LIMITATIONS:
+  - Sensitive to noise and artifacts
+  - Requires well-sampled data
+
+
+--------------------------------------------------------------------------------
+algs.fbp() - Filtered Backprojection (Parallel Beam)
+--------------------------------------------------------------------------------
+
+DESCRIPTION:
+  Direct reconstruction method for parallel beam CT.
+
+USAGE:
+  volume = algs.fbp(proj, geo, angles, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj: projection data (n_angles, rows, cols)
+  - geo: geometry object configured for parallel beam
+  - angles: rotation angles in radians
+
+OPTIONAL ARGUMENTS:
+  - filter (str): Reconstruction filter type
+    Options: 'ram_lak' (default), 'shepp_logan', 'cosine', 'hamming', 'hann'
+    
+  - verbose (bool): Print progress information
+    Default: True
+
+OUTPUT:
+  - volume (np.array): Reconstructed volume
+
+WHEN TO USE:
+  - Parallel beam geometry only (not cone beam)
+
+
+
+
+2. GRADIENT-BASED ITERATIVE ALGORITHMS (SART FAMILY)
+
+The SART family includes SART, SIRT, and OS-SART. Main differences:
+- SART: Updates the image projection by projection
+- SIRT: Updates the image using all projections at once
+- OS-SART: Updates using subsets of projections (middle ground)
+
+COMMON OPTIONAL PARAMETERS (all SART family algorithms):
+
+  - lmbda (float): Relaxation parameter (step size multiplier)
+    Default: 1.0
+    Range: 0.1 - 2.0
+    Effect: Larger = faster convergence but less stable
+    
+  - lmbda_red (float): Lambda reduction factor per iteration
+    Default: 0.99
+    Range: 0.95 - 1.0
+    Effect: Reduces step size over iterations
+    Formula: lmbda = lmbda * lmbda_red each iteration
+    
+  - Init (str or np.array): Initialization method
+    Options: 'none' (default), 'FDK', or provide custom np.array
+    
+  - verbose (bool): Print progress
+    Default: True
+    
+  - computel2 (bool): Compute L2 error at each iteration
+    Default: False
+    If True, returns: (volume, l2_errors) tuple
+    
+  - QualMeas (str or list): Quality metrics to compute
+    Options: 'RMSE', 'CC', 'MSSIM'
+    If specified, returns: (volume, quality_metrics)
+
+
+--------------------------------------------------------------------------------
+algs.sirt() - Simultaneous Iterative Reconstruction Technique
+--------------------------------------------------------------------------------
+
+DESCRIPTION:
+  Uses all projections simultaneously in each iteration.
+
+USAGE:
+  volume = algs.sirt(proj, geo, angles, niter, **kwargs)
+  volume, errors = algs.sirt(proj, geo, angles, niter, computel2=True)
+
+MANDATORY ARGUMENTS:
+  - proj: projection data
+  - geo: geometry object
+  - angles: rotation angles in radians
+  - niter (int): Number of iterations (typical: 50-100)
+
+OPTIONAL ARGUMENTS:
+  See "COMMON OPTIONAL PARAMETERS" above
+
+OUTPUT:
+  - volume: Reconstructed volume
+  - l2_errors (optional): If computel2=True
+
+WHEN TO USE:
+  - Very noisy data
+  - Need stable convergence
+
+LIMITATIONS:
+  - Slowest of SART family (uses all projections per iteration)
+
+
+--------------------------------------------------------------------------------
+algs.sart() - Simultaneous Algebraic Reconstruction Technique
+--------------------------------------------------------------------------------
+
+DESCRIPTION:
+  Updates image using one projection at a time.
+
+USAGE:
+  volume = algs.sart(proj, geo, angles, niter, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj, geo, angles (standard)
+  - niter (int): Number of iterations (typical: 50-100)
+
+OPTIONAL ARGUMENTS:
+  See "COMMON OPTIONAL PARAMETERS" above
+
+OUTPUT:
+  - volume: Reconstructed volume
+  - errors (optional): If computel2=True or QualMeas specified
+
+WHEN TO USE:
+  - Faster than SIRT with reasonable quality
+
+LIMITATIONS:
+  - Less stable than SIRT
+
+
+--------------------------------------------------------------------------------
+algs.ossart() - Ordered Subset SART
+--------------------------------------------------------------------------------
+
+DESCRIPTION:
+  Uses subsets of projections in each iteration. Most commonly used
+  SART variant.
+
+USAGE:
+  volume = algs.ossart(proj, geo, angles, niter, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj, geo, angles (standard)
+  - niter (int): Number of iterations (typical: 30-60)
+
+OPTIONAL ARGUMENTS:
+  All SART family parameters PLUS:
+  
+  - blocksize (int): Number of projections per subset
+    Default: 20
+    Note: blocksize=1 becomes SART, blocksize=n_angles becomes SIRT
+    Typical: 10-20 for good balance
+    
+  - gpuids: GPU selection
+    Default: None (uses default GPU)
+
+OUTPUT:
+  - volume: Reconstructed volume
+  - errors (optional): If computel2=True
+
+WHEN TO USE:
+  - General purpose iterative reconstruction
+  - Good balance of speed and quality
+
+LIMITATIONS:
+  - Requires parameter tuning (blocksize, niter)
+
+
+3. KRYLOV SUBSPACE ALGORITHMS
+--------------------------------------------------------------------------------
+algs.cgls() - Conjugate Gradient Least Squares
+--------------------------------------------------------------------------------
+
+DESCRIPTION:
+  Solves the least squares problem using conjugate gradient method.
+
+USAGE:
+  volume = algs.cgls(proj, geo, angles, niter, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj, geo, angles (standard)
+  - niter (int): Number of iterations (typical: 15-30)
+
+OPTIONAL ARGUMENTS:
+  - Init (str): Initialization method
+    Options: 'none' (default), 'FDK'
+    
+  - verbose (bool): Print progress
+    Default: True
+    
+  - computel2 (bool): Track error per iteration
+    Default: False
+
+OUTPUT:
+  - volume: Reconstructed volume
+  - errors (optional): If computel2=True
+
+WHEN TO USE:
+  - Large datasets
+  - Fast convergence needed (fewer iterations than SART)
+
+
+--------------------------------------------------------------------------------
+algs.lsqr() - Least Squares QR
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Alternative Krylov method, similar to CGLS.
+
+USAGE:
+  volume = algs.lsqr(proj, geo, angles, niter, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj, geo, angles, niter (same as CGLS)
+
+OPTIONAL ARGUMENTS:
+  Similar to CGLS
+
+OUTPUT:
+  - volume: Reconstructed volume
+
+
+--------------------------------------------------------------------------------
+algs.lsmr() - Least Squares Minimal Residual
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Another Krylov variant with improved numerical stability.
+
+USAGE:
+  volume = algs.lsmr(proj, geo, angles, niter, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj, geo, angles, niter (same as CGLS)
+
+OPTIONAL ARGUMENTS:
+  Similar to CGLS
+
+OUTPUT:
+  - volume: Reconstructed volume
+
+
+--------------------------------------------------------------------------------
+Other Krylov Algorithms
+--------------------------------------------------------------------------------
+The following Krylov algorithms are also available:
+  - algs.hybrid_lsqr()
+  - algs.irn_tv_cgls()
+  - algs.hybrid_flsqr_tv()
+  - algs.ab_gmres()
+  - algs.ba_gmres()
+
+
+
+4. TOTAL VARIATION (TV) REGULARIZATION ALGORITHMS
+
+Total variation algorithms minimize the variation (gradient) of the image,
+assuming piecewise smooth structure. These perform well when noise is
+significant or number of projections is small, but require more computational
+time and memory.
+
+--------------------------------------------------------------------------------
+algs.asd_pocs() - Adaptive Steepest Descent POCS
+--------------------------------------------------------------------------------
+
+DESCRIPTION:
+  Minimizes data fidelity and TV norm separately in each iteration.
+  Also called POCS-TV.
+
+USAGE:
+  volume = algs.asd_pocs(proj, geo, angles, niter, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj, geo, angles (standard)
+  - niter (int): Number of main iterations (typical: 20-60)
+
+OPTIONAL ARGUMENTS:
+  - blocksize (int): For ordered subset version
+    Default: 1 (full POCS)
+    Set >1 for OS-ASD-POCS behavior
+    
+  - alpha: TV regularization strength
+  
+  - verbose (bool): Print progress
+
+OUTPUT:
+  - volume: Reconstructed volume with TV regularization
+
+WHEN TO USE:
+  - Sparse-angle data (few projections)
+  - Very noisy data
+  - Need edge preservation
+
+LIMITATIONS:
+  - Computationally expensive
+  - Requires parameter tuning
+
+
+--------------------------------------------------------------------------------
+algs.os_asd_pocs() - Ordered Subset ASD-POCS
+--------------------------------------------------------------------------------
+
+DESCRIPTION:
+  Ordered subset version of ASD-POCS. Faster than full ASD-POCS.
+
+USAGE:
+  volume = algs.os_asd_pocs(proj, geo, angles, niter, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj, geo, angles (standard)
+  - niter (int): Number of iterations (typical: 20-60)
+
+OPTIONAL ARGUMENTS:
+  - blocksize (int): Number of projections per subset
+    Typical: 10-20
+    
+  - verbose (bool): Print progress
+
+OUTPUT:
+  - volume: Reconstructed volume
+
+WHEN TO USE:
+  - Same as ASD-POCS but faster
+  - Sparse or noisy data
+
+
+--------------------------------------------------------------------------------
+algs.ossart_tv() - OS-SART with Total Variation
+--------------------------------------------------------------------------------
+
+DESCRIPTION:
+  Combines OS-SART algorithm with TV regularization.
+
+USAGE:
+  volume = algs.ossart_tv(proj, geo, angles, niter, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj, geo, angles (standard)
+  - niter (int): Main iterations (typical: 20-50)
+
+OPTIONAL ARGUMENTS:
+  - tviter (int): Number of TV minimization iterations per main iteration
+    Typical: 50-100
+    
+  - tvlambda (float): Hyperparameter for TV iteration
+    Default: 15
+    Effect: Gives ratio of importance of image vs minimum TV
+    Higher = less TV denoising
+    Typical: 15-50
+    
+  - blocksize (int): OS-SART subset size
+    Typical: 10-20
+    
+  - verbose (bool): Print progress
+
+OUTPUT:
+  - volume: Reconstructed volume
+
+WHEN TO USE:
+  - Noisy data with more projections available
+  - Want SART-like updates with TV smoothing
+
+
+--------------------------------------------------------------------------------
+algs.sart_tv() - SART with Total Variation
+--------------------------------------------------------------------------------
+
+DESCRIPTION:
+  Combines SART algorithm with TV regularization using proximal approach.
+
+USAGE:
+  volume = algs.sart_tv(proj, geo, angles, niter, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj, geo, angles, niter (standard)
+
+OUTPUT:
+  - volume: Reconstructed volume
+
+
+--------------------------------------------------------------------------------
+algs.fista() - Fast Iterative Shrinkage-Thresholding Algorithm
+--------------------------------------------------------------------------------
+
+DESCRIPTION:
+  Fast proximal gradient method with TV regularization. Modern optimization
+  technique with accelerated convergence.
+
+USAGE:
+  volume = algs.fista(proj, geo, angles, niter, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj, geo, angles (standard)
+  - niter (int): Number of iterations (typical: 20-60)
+
+OPTIONAL ARGUMENTS:
+  - verbose (bool): Print progress
+
+OUTPUT:
+  - volume: Reconstructed volume
+
+WHEN TO USE:
+  - Need fast TV reconstruction
+
+
+--------------------------------------------------------------------------------
+Other TV Algorithms
+--------------------------------------------------------------------------------
+
+The following TV algorithms are also available:
+  - algs.pcsd()          (Projection-Controlled Steepest Descent)
+  - algs.aw_pcsd()       (Adaptive Weighted PCSD)
+  - algs.os_aw_pcsd()    (OS version)
+  - algs.awasd_pocs()    (Adaptive Weighted ASD-POCS)
+  - algs.os_awasd_pocs() (OS version)
+  - algs.os_pcsd()       (Ordered Subset PCSD)
+  - algs.ista()          (Iterative Shrinkage-Thresholding)
+
+
+
+
+5. STATISTICAL RECONSTRUCTION
+--------------------------------------------------------------------------------
+algs.mlem() - Maximum Likelihood Expectation Maximization
+--------------------------------------------------------------------------------
+
+DESCRIPTION:
+  Statistical reconstruction based on Poisson noise model.
+
+USAGE:
+  volume = algs.mlem(proj, geo, angles, niter, **kwargs)
+
+MANDATORY ARGUMENTS:
+  - proj: Should be in photon counts (NOT -log normalized)
+  - geo: geometry object
+  - angles: rotation angles in radians
+  - niter (int): Iterations (typical: 20-50)
+
+OPTIONAL ARGUMENTS:
+  - Init: Initialization method
+  - verbose (bool): Print progress
+
+OUTPUT:
+  - volume: Reconstructed volume
+
+WHEN TO USE:
+  - Low photon counts
+  - Photon-counting detectors
+  - Have access to raw count data
+
+LIMITATIONS:
+  - Requires photon count data (not normalized)
+  - May amplify noise with too many iterations
+
+
+
+
+6. OUTPUT INTERPRETATION
+
+VOLUME UNITS:
+  - Linear attenuation coefficient (mm^-1)
+  
+
+NEGATIVE VALUES:
+  - Small negatives (<1% of max) in background regions are normal
+  - Large negatives indicate problems:
+    • Wrong I0 calibration
+    • Incorrect center-of-rotation
+    • Geometry errors
+
+
+9. IMPORTANT NOTES
+
+FUNCTION NAMING:
+  Use lowercase function names in Python:
+  ✓ algs.fdk()     (correct)
+  ✗ algs.FDK()     (incorrect - will not work)
+
+PROJECTION FORMAT:
+  Projections must be (n_angles, rows, cols)
+  If your data is (rows, cols, angles), transpose:
+    proj_tigre = np.transpose(your_proj, (2, 0, 1))
+
+GPU USAGE:
+  - Most algorithms use GPU automatically
+  - Use gpuids parameter to select specific GPU (where available)
+

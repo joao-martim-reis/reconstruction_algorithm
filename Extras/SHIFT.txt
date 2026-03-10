@@ -1,0 +1,30 @@
+Sem aplicação (PMMA+haste) - 5.12 px
+
+bar pattern nivel 2 - 19.5
+
+Fantoma agua - 21.5
+
+bar_pattern_horizontal_1 -  -20.922
+
+bar patter 3 -   -9.5
+
+bar pattern horizontal - 75
+
+bar pattern horizontal_2 -    -1
+
+bar pattern horizontal_3 -    -2.5
+
+
+Preparing transaction: done                                                
+Verifying transaction: done                                                
+Executing transaction: done                                                
+#                                                                          
+# To activate this environment, use                                        
+#                                                                          
+#     $ conda activate ct_recon
+#
+# To deactivate an active environment, use
+#
+#     $ conda deactivate
+
+python c:/Users/joaomartimreis/Desktop/Joao_CT/Reconstruction_Algorithms/MAIN_reconstruction_algorithms/reconstruction_comparison/recon_astra_fdk.py

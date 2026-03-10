@@ -248,17 +248,19 @@ if __name__ == "__main__":
 
     CONFIG = {
         'voxel_size': 25,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
-        'calibrated_shift_px': 24.5,
+        'calibrated_shift_px': 0, #5.12 / 24.5 / 19.5 (bar pattern nivel 2) / 21.5 (Fantoma agua) 
         'total_angle': 2 * np.pi,
         'shift_sign': 1,  # Try -1 if reconstruction looks wrong
-        'DSD': 457,  # Distance Source to Detector (mm)
-        'DSO': 211,  # Distance Source to Object (mm)
+        'DSD': 463,
+        'DSO': 244,
+        #'DSD': 457,  # Distance Source to Detector (mm)
+        #'DSO': 211,  # Distance Source to Object (mm)
         'downsample': 1, # NOTE: This affects maximum achievable resolution!
-        'algorithm': 'OSSART_TV',  # ← CHANGE THIS to select algorithm
+        'algorithm': 'MLEM',  # ← CHANGE THIS to select algorithm
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift',
         'filtered_volumes_folder': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\Filtered_volumes.Nift'
     }
     
-    folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_nivel_2' #bar pattern
+    folder = r'D:\tentativa_Lara_tiff'  # Path to your TIFF projections folder
     
     vol = main(folder, CONFIG, output_folder=CONFIG.get('output_folder_NiFT'))

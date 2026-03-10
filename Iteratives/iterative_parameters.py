@@ -23,7 +23,7 @@ ALGORITHM_CONFIGS = {
     'CGLS': {
         'category': 'basic',
         'function_name': 'cgls',
-        'iterations': 150,
+        'iterations': 50,
         'description': 'Conjugate gradient least squares. Fast convergence, good for fine details.',
         'params': {}
     },
@@ -62,29 +62,33 @@ ALGORITHM_CONFIGS = {
         'params': {}
     },
     
-
-
-
-    # ALGORITHMS WITH TOTAL VARIATION (TV)
+    'MLEM': {
+        'category': 'basic',
+        'function_name': 'mlem',
+        'iterations': 30,
+        'description': 'Maximum Likelihood Expectation Maximization. Statistical method for low-dose data.',
+        'params': {}
+    },
 
     'OSSART_TV': {
         'category': 'tv',
         'function_name': 'ossart_tv',
-        'iterations': 30,
+        'iterations': 50,
         'description': 'OSSART with TV regularization. Fast and reduces metal artifacts.',
         'params': {
-            'blocksize': 5,      # increase = faster | decrease = better
-            'lmbda': 5,    # TV weight: increase = stronger smoothing | decrease = more detail
+            'blocksize': 5,
+            #'tvlambda': 10, # TV weight: increase = stronger smoothing | decrease = more detail
+            #'tviter': 25    # internal TV iterations: increase = stronger smoothing | decrease = more detail
         }
     },
     
     'SART_TV': {
         'category': 'tv',
         'function_name': 'sart_tv',
-        'iterations': 50,
+        'iterations': 60,
         'description': 'SART with TV regularization. Slower than OSSART_TV but more precise.',
         'params': {
-            'lmbda': 5   # TV weight: increase = stronger smoothing | decrease = more detail
+
         }
     },
     
@@ -94,9 +98,7 @@ ALGORITHM_CONFIGS = {
         'iterations': 120,
         'description': 'Adaptive steepest descent with TV. Good for severe artifacts.',
         'params': {
-            'alpha': 0.002,   # ASD alpha (descent step): increase = faster convergence
-            'epsilon': 0.05,  # ASD epsilon (fidelity tolerance): increase = more smoothing
-            'ng': 25           # internal TV iterations
+            'alpha': 0.002    # ASD alpha (descent step): increase = faster convergence
         }
     },
     
@@ -106,9 +108,7 @@ ALGORITHM_CONFIGS = {
         'iterations': 100,
         'description': 'Adaptive weighted ASD_POCS with automatic weight adjustment.',
         'params': {
-            'alpha': 0.002,
-            'epsilon': 0.05,
-            'ng': 25
+            'alpha': 0.002
         }
     },
 }
