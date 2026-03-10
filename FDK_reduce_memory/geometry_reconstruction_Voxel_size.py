@@ -13,7 +13,7 @@ import tigre
 
 
 def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle, 
-                   shift_sign, downsample_factor=1, crop_params=None):
+                   shift_sign, downsample_factor=1, crop_params=None, detector_tilt=0):
 
 
     REAL_DETECTOR_PIXEL_SIZE = 0.050  # Physical hardware constraint - actual pixel size of our detector, (50 μm)
@@ -82,7 +82,11 @@ def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle,
         geo.offDetector = np.array([0.0, shift_mm_sign])
     
     geo.offOrigin = np.array([0, 0, 0])
-    geo.rotDetector = np.array([0, 0, 0])
+
+    # --- DETECTOR TILT CORRECTION ---
+    # Value obtained from the calculate_detector_tilt.py script
+    # In TIGRE, in-plane rotation is the Z component (index 2)
+    geo.rotDetector = np.array([0, 0, detector_tilt])
     
     angles = np.linspace(0, total_angle, n_angles, endpoint=False)
 
