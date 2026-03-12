@@ -9,8 +9,14 @@ def load_images(tiff_folder):
     print(f"--> Loading images from: {tiff_folder}")
     
     if not os.path.exists(tiff_folder): #os.path.exists checks if a path exists
-        print(f"Error: Folder does not exist: {tiff_folder}")
-        return None
+        parent = os.path.dirname(tiff_folder)
+        hint = ""
+        if parent and os.path.isdir(parent):
+            siblings = [d for d in os.listdir(parent) if os.path.isdir(os.path.join(parent, d))]
+            if siblings:
+                preview = ", ".join(sorted(siblings)[:5])
+                hint = f" Available folders in parent: {preview}"
+        raise FileNotFoundError(f"Folder does not exist: {tiff_folder}.{hint}")
 
     def extract_number(filename):
         match = re.search(r'\d+', filename) #re.search finds the first occurrence of the pattern
@@ -30,7 +36,9 @@ def load_images(tiff_folder):
     for f in file_list[-5:]: print(f" - {f}")
 
     if num_files == 0:
-        print("Error: No TIFF files found in the folder.")
+        raise FileNotFoundError(
+            f"No TIFF files (.tif/.tiff) found in folder: {tiff_folder}"
+        )
 
     
     first_img = tiff.imread(os.path.join(tiff_folder, file_list[0]))

@@ -1,190 +1,206 @@
+"""
+recon_astra_fdk.py
+==================
+FDK cone-beam CT reconstruction using the ASTRA Toolbox.
+
+Pipeline:
+  Phase 1 – Data loading & I0 selection        ← SHARED with TIGRE / scratch
+  Phase 2 – Crop, normalise, downsample         ← SHARED with TIGRE / scratch
+  Phase 3 – ASTRA geometry + FDK_CUDA          ← *** ASTRA SPECIFIC ***
+  Phase 4 – Napari viewer & NIfTI export        ← SHARED with TIGRE / scratch
+
+Run in the ct_recon conda environment:
+  conda activate ct_recon
+  python recon_astra_fdk.py
+
+Key difference vs TIGRE sinogram axis order:
+  projections array shape:  (n_rows, n_cols, n_angles)
+  ASTRA expects:            (n_rows, n_angles, n_cols)  → transpose (0, 2, 1)
+  TIGRE expects:            (n_angles, n_rows, n_cols)  → transpose (2, 0, 1)
+"""
+
 import numpy as np
 import os
 import sys
 import gc
-import matplotlib.pyplot as plt
 import napari
-from datetime import datetime
 
+# Ensure local modules are found regardless of working directory
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from FDK_astra.geometry_reconstruction_Voxel_size_ASTRA import setup_geometry
+# ASTRA-specific helper modules (no TIGRE dependency)
+# Original TIGRE versions are untouched for TIGRE-based scripts
+from geometry_reconstruction_Voxel_size_ASTRA import setup_geometry
+from export_volumes_ASTRA import export_volume_to_nii, export_volume_HU
+
+# Shared modules (identical across all reconstruction scripts)
 from crop_projections import select_crop_region, apply_crop_to_projections
-from data_processing_FDK_3D import load_images, generate_collapsed_sinogram, selecionar_roi_I0, get_I0_from_roi
-from FDK_astra.export_volumes_ASTRA import export_volume_to_nii, export_volume_HU
+from data_processing_FDK_3D import (load_images, generate_collapsed_sinogram,
+                                     selecionar_roi_I0, get_I0_from_roi)
 
-# ---------------------------------------------------------------------------
-# ASTRA dependency check
-# ---------------------------------------------------------------------------
-try:
-    import astra
-    if not astra.use_cuda():
-        raise RuntimeError(
-            "ASTRA is installed but CUDA is not available.\n"
-            "ASTRA FDK_CUDA requires a CUDA GPU.  Ensure you installed the GPU build:\n"
-            "  pip install astra-toolbox   (or the conda-forge CUDA variant)"
-        )
-except ImportError:
-    raise ImportError(
-        "ASTRA Toolbox is not installed.\n"
-        "Install: pip install astra-toolbox\n"
-        "See:     https://www.astra-toolbox.com/docs/install.html"
-    )
+# ============================================================
+#  ASTRA IMPORT
+# ============================================================
+import astra
+# ============================================================
 
 
 # ---------------------------------------------------------------------------
-# Helper functions (same as MAIN_TIGRE_FDK_Voxel_size.py)
+# Shared helper functions  (identical in TIGRE / ASTRA / scratch scripts)
 # ---------------------------------------------------------------------------
 
 def normalize_projections(projections_raw, I0_override=None):
     print("--> Normalizing cropped projections...")
-    print(f"    Input shape: {projections_raw.shape}, Memory: {projections_raw.nbytes / 1e6:.1f} MB")
-    I0 = float(I0_override) if I0_override is not None else float(np.percentile(projections_raw, 1))
-    projections_raw = projections_raw.astype(np.float32)
-    ratio = projections_raw / (I0 + 1e-6)
-    ratio = np.clip(ratio, 1e-6, 1.2)
+    print(f"    Input shape: {projections_raw.shape}, "
+          f"Memory: {projections_raw.nbytes / 1e6:.1f} MB")
+    I0 = float(I0_override) if I0_override is not None \
+         else float(np.percentile(projections_raw, 1))
+    projections_raw  = projections_raw.astype(np.float32)
+    ratio            = np.clip(projections_raw / (I0 + 1e-6), 1e-6, 1.2)
     projections_norm = -np.log(ratio)
     projections_norm[projections_norm < 0] = 0
-    print(f"    ✓ Normalization complete")
+    print("    ✓ Normalization complete")
     return projections_norm
 
 
 def downsample_block_mean_pad(proj, f):
-    Height, Width, Angles = proj.shape
-    pad_h = (-Height) % f
-    pad_w = (-Width)  % f
+    H, W, A   = proj.shape
+    pad_h     = (-H) % f
+    pad_w     = (-W) % f
     if pad_h or pad_w:
-        proj = np.pad(proj, ((0, pad_h), (0, pad_w), (0, 0)), mode='edge')
-    dh, dw = proj.shape[0] // f, proj.shape[1] // f
-    blocks = proj.reshape(dh, f, dw, f, Angles)
-    return blocks.mean(axis=(1, 3))
+        proj  = np.pad(proj, ((0, pad_h), (0, pad_w), (0, 0)), mode='edge')
+    dh, dw    = proj.shape[0] // f, proj.shape[1] // f
+    return proj.reshape(dh, f, dw, f, A).mean(axis=(1, 3))
 
 
 def print_volume_info(volume, geo=None):
     print("RECONSTRUCTED VOLUME INFORMATION")
-    print(f"Dtype: {volume.dtype}")
-    print(f"Dimensions: {volume.shape}  (Z, Y, X)")
+    print(f"  Dtype:      {volume.dtype}")
+    print(f"  Shape:      {volume.shape}  (Z, Y, X)")
     if geo is not None:
         print(f"  Voxel size: {geo.dVoxel[0]*1000:.2f} μm")
-        print(f"  Physical size: {geo.sVoxel} mm")
+        print(f"  Physical:   {geo.sVoxel} mm")
 
 
-# ---------------------------------------------------------------------------
-# ASTRA geometry builder
-# ---------------------------------------------------------------------------
+# ============================================================
+#  ASTRA-SPECIFIC: geometry builder
+#  Compare this section with the equivalent in:
+#    - recon_tigre_fdk.py   → tigre.geometry + tigre.FDK()
+#    - recon_fdk_scratch.py → manual backprojection loop
+# ============================================================
 
 def build_astra_geometry(geo, angles):
     """
-    Map a TIGRE geometry object to ASTRA cone_vec format.
+    Convert a CTGeometry object into ASTRA cone_vec format.
 
-    ASTRA cone_vec: each projection is described by 12 values
-        [srcX, srcY, srcZ,  dX, dY, dZ,  uX, uY, uZ,  vX, vY, vZ]
+    ASTRA cone_vec — each of the 12 values per projection:
+      [srcX, srcY, srcZ]   source position
+      [dX,   dY,   dZ  ]   detector centre position
+      [uX,   uY,   uZ  ]   horizontal detector axis (scaled by pixel pitch)
+      [vX,   vY,   vZ  ]   vertical   detector axis (scaled by pixel pitch)
 
-    Coordinate system matches TIGRE:
-        X right, Y into scanner at θ=0, Z up.
-        Angles CCW from above (+Z), θ=0 → source at −Y.
-
-    For angle θ:
-        source centre  = ( DSO·sin θ,  −DSO·cos θ,  0 )
-        detector centre= (−DOD·sin θ,   DOD·cos θ,  0 ) + offsets
-        u  (horizontal)= ( cos θ·du,    sin θ·du,   0 )  ← rotates with gantry
-        v  (vertical)  = ( 0,           0,           −dv ) ← row 0 at top
-
-    Detector offset:
-        offDetector[1] (horizontal, mm) rotates with the gantry  →  add along û
-        offDetector[0] (vertical, mm) is fixed in Z              →  add along +Z
-
-    In-plane detector tilt (rotDetector[2], rad) rotates u around the
-    beam-direction axis (Rodrigues rotation).
+    Convention (same as TIGRE):
+      X = right,  Y = into scanner at theta=0,  Z = up
+      theta=0 → source at -Y, increases CCW viewed from above.
     """
     DSO   = float(geo.DSO)
     DOD   = float(geo.DSD - geo.DSO)
-    du    = float(geo.dDetector[1])          # col pixel pitch  mm
-    dv    = float(geo.dDetector[0])          # row pixel pitch  mm
-    off_h = float(geo.offDetector[1])        # horizontal offset mm
-    off_v = float(geo.offDetector[0])        # vertical   offset mm
-    tilt  = float(geo.rotDetector[2])        # in-plane tilt rad
+    du    = float(geo.dDetector[1])    # col pitch, mm
+    dv    = float(geo.dDetector[0])    # row pitch, mm
+    off_h = float(geo.offDetector[1])  # horizontal COR offset, mm
+    off_v = float(geo.offDetector[0])  # vertical offset, mm
+    tilt  = float(geo.rotDetector[2])  # in-plane detector tilt, rad
 
-    n_ang   = len(angles)
-    vectors = np.zeros((n_ang, 12), dtype=np.float64)
+    vectors = np.zeros((len(angles), 12), dtype=np.float64)
 
     for i, theta in enumerate(angles):
-        ct = np.cos(theta);  st = np.sin(theta)
+        ct, st = np.cos(theta), np.sin(theta)
 
-        # Source position
-        srcX, srcY, srcZ =  DSO * st,  -DSO * ct,  0.0
+        # Source
+        srcX, srcY, srcZ = DSO * st, -DSO * ct, 0.0
 
-        # Detector centre (raw + horizontal + vertical offsets)
-        dX = -DOD * st  +  off_h * ct
-        dY =  DOD * ct  +  off_h * st
+        # Detector centre + offsets
+        dX = -DOD * st + off_h * ct
+        dY =  DOD * ct + off_h * st
         dZ =  off_v
 
-        # u-axis (horizontal, co-rotates with gantry), scaled by pixel pitch
-        ux_base = ct * du
-        uy_base = st * du
-        uz_base = 0.0
+        # u-axis (horizontal, rotates with gantry)
+        ux, uy, uz = ct * du, st * du, 0.0
 
-        # Apply in-plane tilt around the detector normal n = R(θ)·[0,1,0]
+        # Apply in-plane tilt via Rodrigues rotation if needed
         if abs(tilt) > 1e-12:
-            nx, ny, nz = -st, ct, 0.0
-            cos_t, sin_t = np.cos(tilt), np.sin(tilt)
-            cross_x = ny * uz_base - nz * uy_base
-            cross_y = nz * ux_base - nx * uz_base
-            cross_z = nx * uy_base - ny * ux_base
-            nd_u = nx * ux_base + ny * uy_base + nz * uz_base
-            uX = ux_base * cos_t + cross_x * sin_t + nx * nd_u * (1 - cos_t)
-            uY = uy_base * cos_t + cross_y * sin_t + ny * nd_u * (1 - cos_t)
-            uZ = uz_base * cos_t + cross_z * sin_t + nz * nd_u * (1 - cos_t)
-        else:
-            uX, uY, uZ = ux_base, uy_base, uz_base
+            nx, ny, nz   = -st, ct, 0.0
+            c, s         = np.cos(tilt), np.sin(tilt)
+            cx = ny*uz - nz*uy;  cy = nz*ux - nx*uz;  cz = nx*uy - ny*ux
+            nd = nx*ux + ny*uy + nz*uz
+            ux = ux*c + cx*s + nx*nd*(1-c)
+            uy = uy*c + cy*s + ny*nd*(1-c)
+            uz = uz*c + cz*s + nz*nd*(1-c)
 
-        # v-axis (vertical, fixed in lab frame)
-        # Negative because row 0 is at the TOP of the detector → rows increase downward
-        vX, vY, vZ = 0.0,  0.0,  -dv
+        # v-axis (vertical, fixed; negative → row 0 at top)
+        vx, vy, vz = 0.0, 0.0, -dv
 
-        vectors[i] = [srcX, srcY, srcZ, dX, dY, dZ, uX, uY, uZ, vX, vY, vZ]
+        vectors[i] = [srcX, srcY, srcZ, dX, dY, dZ, ux, uy, uz, vx, vy, vz]
 
-    # Projection geometry
     n_rows, n_cols = int(geo.nDetector[0]), int(geo.nDetector[1])
     proj_geom = astra.create_proj_geom('cone_vec', n_rows, n_cols, vectors)
 
-    # Volume geometry  (ASTRA: rows=Y, cols=X, slices=Z)
-    # Extents are symmetric around the origin
     nZ, nY, nX = [int(v) for v in geo.nVoxel]
     dZ, dY, dX = [float(v) for v in geo.dVoxel]
-    half_x, half_y, half_z = nX * dX / 2.0, nY * dY / 2.0, nZ * dZ / 2.0
-
-    # create_vol_geom(ny, nx, nz, min_x, max_x, min_y, max_y, min_z, max_z)
     vol_geom = astra.create_vol_geom(
         nY, nX, nZ,
-        -half_x,  half_x,
-        -half_y,  half_y,
-        -half_z,  half_z,
+        -nX*dX/2,  nX*dX/2,
+        -nY*dY/2,  nY*dY/2,
+        -nZ*dZ/2,  nZ*dZ/2,
     )
 
     return proj_geom, vol_geom
 
 
-def print_geometry_mapping(geo, angles):
-    """Print the TIGRE → ASTRA field-by-field translation for verification."""
-    print("\n  GEOMETRY MAPPING  TIGRE → ASTRA cone_vec")
-    print(f"  {'DSD':20s}  {geo.DSD:.3f} mm   (source-to-detector)")
-    print(f"  {'DSO':20s}  {geo.DSO:.3f} mm   (source-to-object)")
-    print(f"  {'DOD':20s}  {geo.DSD - geo.DSO:.3f} mm   (object-to-detector)")
-    print(f"  {'nDetector':20s}  {geo.nDetector}  [rows, cols]")
-    print(f"  {'dDetector':20s}  {geo.dDetector*1000} μm  [row_pitch, col_pitch]")
-    print(f"  {'offDetector':20s}  {geo.offDetector} mm  [vertical, horizontal]")
-    print(f"  {'rotDetector[2]':20s}  {geo.rotDetector[2]:.6f} rad  (in-plane tilt)")
-    print(f"  {'nVoxel [Z,Y,X]':20s}  {geo.nVoxel}")
-    print(f"  {'dVoxel [Z,Y,X]':20s}  {geo.dVoxel*1000} μm")
-    print(f"  {'Angles':20s}  {len(angles)} projections  "
-          f"[{angles[0]:.4f} … {angles[-1]:.4f}] rad  (CCW, same convention)")
-    print()
-    print("  NOTE: ASTRA FDK_CUDA uses Ram-Lak filter only.")
-    print("        If filter_type != 'ram_lak', only TIGRE/scratch apply the")
-    print("        requested kernel; ASTRA always uses Ram-Lak.")
-    print("  NOTE: ASTRA FDK may differ in absolute intensity from TIGRE due to")
-    print("        different filter normalisation constants.  Compare")
-    print("        relative contrast first; apply a linear rescale if needed.")
+def run_astra_fdk(sinogram, proj_geom, vol_geom):
+    """
+    Run ASTRA FDK_CUDA and return the reconstructed volume.
+
+    sinogram shape:  (n_rows, n_angles, n_cols)   ← ASTRA convention
+    volume shape:    (nZ, nY, nX)                 ← same as TIGRE convention
+    """
+    sino_id = astra.data3d.create('-sino', proj_geom, sinogram)
+    vol_id  = astra.data3d.create('-vol',  vol_geom,  0)
+
+    cfg = astra.astra_dict('FDK_CUDA')
+    cfg['ProjectionDataId']     = sino_id
+    cfg['ReconstructionDataId'] = vol_id
+
+    alg_id = astra.algorithm.create(cfg)
+    astra.algorithm.run(alg_id)
+
+    volume = astra.data3d.get(vol_id).astype(np.float32)
+
+    # Free GPU memory immediately
+    astra.algorithm.delete(alg_id)
+    astra.data3d.delete(sino_id)
+    astra.data3d.delete(vol_id)
+
+    return volume
+
+# ============================================================
+#  END OF ASTRA-SPECIFIC SECTION
+# ============================================================
+
+
+def print_geometry_summary(geo, angles):
+    print("\n  GEOMETRY  (CTGeometry → ASTRA cone_vec)")
+    print(f"  DSD            {geo.DSD:.1f} mm")
+    print(f"  DSO            {geo.DSO:.1f} mm")
+    print(f"  DOD            {geo.DSD - geo.DSO:.1f} mm")
+    print(f"  nDetector      {geo.nDetector}  [rows, cols]")
+    print(f"  dDetector      {geo.dDetector*1000} μm")
+    print(f"  offDetector    {geo.offDetector} mm  [vertical, horizontal]")
+    print(f"  nVoxel         {geo.nVoxel}  [Z, Y, X]")
+    print(f"  dVoxel         {geo.dVoxel*1000} μm")
+    print(f"  Angles         {len(angles)} × "
+          f"[{np.degrees(angles[0]):.1f}° … {np.degrees(angles[-1]):.1f}°]")
+    print(f"  Filter         Ram-Lak (fixed in ASTRA FDK_CUDA)")
 
 
 # ---------------------------------------------------------------------------
@@ -192,53 +208,54 @@ def print_geometry_mapping(geo, angles):
 # ---------------------------------------------------------------------------
 
 def main(tiff_folder, configurations, output_folder=None):
-    """
-    ASTRA FDK reconstruction pipeline.
 
-    Phase 1 – Data loading & I0 selection       (identical to TIGRE)
-    Phase 2 – Crop, normalise, downsample        (identical to TIGRE)
-    Phase 3 – ASTRA geometry + FDK_CUDA
-    Phase 4 – Napari viewer & optional NIfTI export
-    """
-
-    # ── PHASE 1 ─────────────────────────────────────────────────────────────
-    print("\nPHASE 1: DATA LOADING & I0 SELECTION")
+    # ── PHASE 1  –  DATA LOADING & I0 SELECTION  (shared) ──────────────────
+    print("\n" + "="*60)
+    print("PHASE 1: DATA LOADING & I0 SELECTION")
+    print("="*60)
 
     projections_raw = load_images(tiff_folder)
-    sino_raw        = generate_collapsed_sinogram(projections_raw)
-    roi_background  = selecionar_roi_I0(sino_raw)
-    mean_I0         = get_I0_from_roi(sino_raw, roi_background, projections_raw.shape[0])
-    del sino_raw
-    gc.collect()
+    if projections_raw is None or projections_raw.size == 0:
+        raise ValueError(f"No images loaded from: {tiff_folder}")
 
-    # ── PHASE 2 ─────────────────────────────────────────────────────────────
-    print("\nPHASE 2: CROP  |  NORMALISE  |  DOWNSAMPLE")
+    sino_raw       = generate_collapsed_sinogram(projections_raw)
+    roi_background = selecionar_roi_I0(sino_raw)
+    mean_I0        = get_I0_from_roi(sino_raw, roi_background, projections_raw.shape[0])
+    del sino_raw;  gc.collect()
+
+    # ── PHASE 2  –  CROP | NORMALISE | DOWNSAMPLE  (shared) ────────────────
+    print("\n" + "="*60)
+    print("PHASE 2: CROP  |  NORMALISE  |  DOWNSAMPLE")
+    print("="*60)
 
     crop_params         = select_crop_region(projections_raw[:, :, 0])
     projections_cropped = apply_crop_to_projections(projections_raw, crop_params)
-    del projections_raw
-    gc.collect()
+    del projections_raw;  gc.collect()
 
     projections_norm    = normalize_projections(projections_cropped, I0_override=mean_I0)
-    del projections_cropped
-    gc.collect()
+    del projections_cropped;  gc.collect()
 
     f = configurations['downsample']
     if f > 1:
-        print(f"Downsampling {f}x …")
+        print(f"--> Downsampling {f}x ...")
         projections_final = downsample_block_mean_pad(projections_norm, f).astype(np.float32)
-        del projections_norm
-        gc.collect()
+        del projections_norm;  gc.collect()
     else:
         projections_final = projections_norm
 
-    # ── PHASE 3 ─────────────────────────────────────────────────────────────
-    print("\nPHASE 3: ASTRA GEOMETRY & FDK_CUDA RECONSTRUCTION")
+    # ── PHASE 3  –  ASTRA GEOMETRY & FDK RECONSTRUCTION  (ASTRA specific) ──
+    print("\n" + "="*60)
+    print("PHASE 3: ASTRA GEOMETRY & FDK_CUDA RECONSTRUCTION")
+    print("         *** THIS IS THE ASTRA-SPECIFIC PHASE ***")
+    print("         Compare with Phase 3 in:")
+    print("           recon_tigre_fdk.py   → tigre.FDK()")
+    print("           recon_fdk_scratch.py → manual Ram-Lak + backproject")
+    print("="*60)
 
     shift_val          = configurations['calibrated_shift_px'] / f
     effective_voxel_sz = configurations['voxel_size'] * f
 
-    # Build TIGRE geo object – reused for shift/crop calculations and NIfTI export
+    # Build geometry (ASTRA version uses CTGeometry, not tigre.geometry)
     geo, angles = setup_geometry(
         projections_final.shape,
         effective_voxel_sz,
@@ -246,61 +263,55 @@ def main(tiff_folder, configurations, output_folder=None):
         configurations['DSO'],
         shift_val,
         configurations['total_angle'],
-        shift_sign       = configurations['shift_sign'],
-        downsample_factor= configurations['downsample'],
-        crop_params      = crop_params,
-        detector_tilt    = configurations.get('detector_tilt', 0),
+        shift_sign        = configurations['shift_sign'],
+        downsample_factor = configurations['downsample'],
+        crop_params       = crop_params,
+        detector_tilt     = configurations.get('detector_tilt', 0),
     )
 
-    # Build ASTRA geometry from geo fields
-    print_geometry_mapping(geo, angles)
+    print_geometry_summary(geo, angles)
+
+    # Build ASTRA geometry objects
     proj_geom, vol_geom = build_astra_geometry(geo, angles)
 
-    # Sinogram: ASTRA expects (n_angles, n_rows, n_cols)  – same as TIGRE input
-    sinogram = np.transpose(projections_final, (2, 0, 1)).copy().astype(np.float32)
-    del projections_final
-    gc.collect()
+    # Reorder sinogram axes for ASTRA
+    # ---------------------------------------------------------------
+    # Input shape:       (n_rows, n_cols,   n_angles)
+    # ASTRA expects:     (n_rows, n_angles, n_cols  )  → transpose (0, 2, 1)
+    # TIGRE expects:     (n_angles, n_rows, n_cols  )  → transpose (2, 0, 1)
+    # ---------------------------------------------------------------
+    sinogram = np.transpose(projections_final, (0, 2, 1)).copy().astype(np.float32)
+    del projections_final;  gc.collect()
 
-    # Create ASTRA GPU data objects
-    sino_id = astra.data3d.create('-sino', proj_geom, sinogram)
-    vol_id  = astra.data3d.create('-vol',  vol_geom,  0)
+    print(f"\n--> Sinogram shape sent to ASTRA: {sinogram.shape}  (n_rows, n_angles, n_cols)")
+    print("--> Running FDK_CUDA ...")
 
-    # Configure and run FDK_CUDA
-    cfg = astra.astra_dict('FDK_CUDA')
-    cfg['ProjectionDataId']    = sino_id
-    cfg['ReconstructionDataId']= vol_id
+    # Run ASTRA FDK
+    volume = run_astra_fdk(sinogram, proj_geom, vol_geom)
+    del sinogram;  gc.collect()
 
-    alg_id = astra.algorithm.create(cfg)
-    astra.algorithm.run(alg_id)
-
-    # Retrieve volume – ASTRA returns (nZ, nY, nX), same axis order as TIGRE
-    volume = astra.data3d.get(vol_id).astype(np.float32)
-
-    # Clean up GPU objects immediately
-    astra.algorithm.delete(alg_id)
-    astra.data3d.delete(sino_id)
-    astra.data3d.delete(vol_id)
-
+    print("--> ✓ Reconstruction complete")
     print_volume_info(volume, geo)
 
-    # ── PHASE 4 ─────────────────────────────────────────────────────────────
-    print("\nPHASE 4: VISUALISATION & EXPORT")
+    # ── PHASE 4  –  VISUALISATION & EXPORT  (shared) ───────────────────────
+    print("\n" + "="*60)
+    print("PHASE 4: VISUALISATION & EXPORT")
+    print("="*60)
 
-    voxel_scale = (geo.dVoxel[0], geo.dVoxel[1], geo.dVoxel[2])
+    voxel_scale = tuple(geo.dVoxel)
     viewer = napari.Viewer()
     viewer.add_image(volume, scale=voxel_scale, name="ASTRA FDK – CT Volume")
     napari.run()
 
-    nii_filepath = None
     if input("\nExport to .nii? (y/n): ").strip().lower() == 'y':
-        nii_filepath = export_volume_to_nii(volume, geo, tiff_folder,
-                                            base_output=output_folder)
-        print(f"Saved: {nii_filepath}")
+        nii_path = export_volume_to_nii(volume, geo, tiff_folder,
+                                        base_output=output_folder)
+        print(f"Saved: {nii_path}")
 
-        if nii_filepath and input("Convert to Hounsfield Units? (y/n): ").strip().lower() == 'y':
+        if input("Convert to Hounsfield Units? (y/n): ").strip().lower() == 'y':
             water_val = float(input("Gray-scale value for WATER: "))
-            air_val   = float(input("Gray-scale value for AIR  : "))
-            export_volume_HU(nii_filepath, volume, water_val, air_val)
+            air_val   = float(input("Gray-scale value for AIR:   "))
+            export_volume_HU(nii_path, volume, water_val, air_val)
 
     print("\nRECONSTRUCTION COMPLETE")
     return volume
@@ -312,18 +323,18 @@ def main(tiff_folder, configurations, output_folder=None):
 if __name__ == "__main__":
 
     CONFIG = {
-        'voxel_size':           25,           # μm
-        'calibrated_shift_px':  40,
-        'shift_sign':           1,
-        'total_angle':          2 * np.pi,
-        'DSD':                  488,           # mm  (457 + 31)
-        'DSO':                  255,           # mm  (224 + 31)
-        'downsample':           1,
-        'filter_type':          'ram_lak',     # ASTRA FDK_CUDA uses Ram-Lak regardless
-        'detector_tilt':        0,
+        'voxel_size':          25,         # μm  – reconstruction voxel size
+        'calibrated_shift_px': 19.5,       # px  – centre-of-rotation shift
+        'shift_sign':          1,          # +1 or -1
+        'total_angle':         2 * np.pi,  # rad – full 360° rotation
+        'DSD':                 488,        # mm  – source to detector
+        'DSO':                 255,        # mm  – source to object
+        'downsample':          1,          # 1 = no downsampling
+        'detector_tilt':       0,          # rad – in-plane tilt correction
+        # NOTE: filter is Ram-Lak only in ASTRA FDK_CUDA, not user-selectable
     }
 
-    FOLDER        = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Motor_grande'
+    FOLDER        = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_nivel_2'
     OUTPUT_FOLDER = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift'
 
     main(FOLDER, CONFIG, output_folder=OUTPUT_FOLDER)

@@ -4,14 +4,15 @@ recon_fdk_scratch.py
 FDK cone-beam CT reconstruction from scratch.
 Reference: Feldkamp, Davis & Kress (1984), JOSA A 1(6), 612-619.
 
+Giovanni Di Domenico
+DOI: http://dx.doi.org/10.3204/DESY-PROC-2014-05/35
+
 Steps:
   A. Cosine pre-weighting     — FDK Eq. 3
   B. 1-D ramp filter (FFT)    — Kak & Slaney Ch. 3
   C. Weighted backprojection  — FDK Eq. 10:  weight = (DSO/U)²
 
-GPU (CuPy) used when available, falls back to NumPy/CPU.
-cuFFT is probed separately at startup — if unavailable (DLL missing),
-Step B falls back to NumPy FFT while Step C continues on GPU.
+
 """
 
 import gc
@@ -27,33 +28,24 @@ from data_processing_FDK_3D import (load_images, generate_collapsed_sinogram,
                                      selecionar_roi_I0, get_I0_from_roi)
 from export_volumes import export_volume_to_nii, export_volume_HU
 
-# ── GPU backend ──────────────────────────────────────────────────────────────
+# ── GPU backend (GPU-only mode) ──────────────────────────────────────────────
 try:
     import cupy as cp
     from cupyx.scipy import ndimage as cpndi
-    _GPU = True
-except Exception:
-    _GPU = False
-    warnings.warn("CuPy not found — running entirely on CPU (NumPy).", RuntimeWarning)
+except Exception as e:
+    raise RuntimeError(
+        "CuPy is required for GPU-only mode. Install a matching cupy-cuda package for your CUDA version."
+    ) from e
 
-_CUFFT = False
-if _GPU:
-    try:
-        _t = cp.fft.fft(cp.zeros(8, dtype=cp.float32)); del _t
-        _CUFFT = True
-    except Exception as e:
-        warnings.warn(
-            f"cuFFT unavailable ({type(e).__name__}: {e}). "
-            "Step B will use NumPy FFT; Step C still runs on GPU.",
-            RuntimeWarning,
-        )
+# Running in GPU-only mode
+_GPU = True
+_CUFFT = hasattr(cp, 'fft') and callable(getattr(cp.fft, 'fft', None))
 
-
-def _xp(use_gpu):
-    return cp if (use_gpu and _GPU) else np
+def _xp(use_gpu=True):
+    return cp
 
 def _to_cpu(arr):
-    return cp.asnumpy(arr) if (_GPU and isinstance(arr, cp.ndarray)) else np.asarray(arr)
+    return cp.asnumpy(arr) if isinstance(arr, cp.ndarray) else np.asarray(arr)
 
 
 # ── Pre-processing helpers ────────────────────────────────────────────────────
@@ -62,7 +54,6 @@ def normalize_projections(projections_raw, I0_override=None):
     I0   = float(I0_override) if I0_override is not None else float(np.percentile(projections_raw, 1))
     proj = np.clip(projections_raw.astype(np.float32) / (I0 + 1e-6), 1e-6, 1.2)
     out  = np.maximum(-np.log(proj), 0)
-    print(f"    I0 = {I0:.1f}  |  attenuation range [{out.min():.3f}, {out.max():.3f}]")
     return out
 
 
@@ -72,14 +63,18 @@ def downsample_block_mean_pad(proj, f):
     return proj.reshape(proj.shape[0]//f, f, proj.shape[1]//f, f, A).mean(axis=(1, 3))
 
 
-# ── Step A: Cosine pre-weighting ──────────────────────────────────────────────
 
+
+# ── Step A: Cosine pre-weighting  [Image Eq. 3] ─────────────────────────────
+#
+#   g1(u, v, β) = g(u, v, β) · R_d / sqrt(R_d² + u² + v²)
+#
+#   R_d = DSD  (source-to-detector distance)
+#   u, v = lateral / axial detector coordinates in mm from the beam axis
+#
+#   The weight downscales off-axis rays by the cosine of the cone angle,
+#   exactly compensating for the longer path length through the object.
 def preweight(sinogram, geo, use_gpu=True):
-    """
-    w(u,v) = DSD / sqrt(DSD² + u² + v²)    [FDK Eq. 3]
-    u, v : detector coordinates (mm) from detector centre.
-    v-axis flipped so positive v points upward (row 0 = top).
-    """
     xp = _xp(use_gpu)
 
     n_rows, n_cols = int(geo.nDetector[0]), int(geo.nDetector[1])
@@ -87,36 +82,40 @@ def preweight(sinogram, geo, use_gpu=True):
     off_h, off_v   = float(geo.offDetector[1]), float(geo.offDetector[0])
     DSD            = float(geo.DSD)
 
+    # Physical detector coordinates (mm) centred on the beam axis
     u = (xp.arange(n_cols) - (n_cols - 1) / 2.0) * du + off_h
-    v = ((n_rows - 1) / 2.0 - xp.arange(n_rows)) * dv + off_v
+    v = ((n_rows - 1) / 2.0 - xp.arange(n_rows)) * dv + off_v  # row 0 = top → flip
     U2D, V2D = xp.meshgrid(u, v)
 
+    # Cosine weight: DSD / sqrt(DSD² + u² + v²)
     W = (DSD / xp.sqrt(DSD**2 + U2D**2 + V2D**2)).astype(xp.float32)
     return _to_cpu(xp.asarray(sinogram, dtype=xp.float32) * W[xp.newaxis])
 
 
-# ── Step B: Ramp filter ───────────────────────────────────────────────────────
-
+# ── Step B: Ramp filter  [Image Eq. 4] ──────────────────────────────────────
+#
+#   g2(u, v, β) = g1(u, v, β) ⊗ h_ramp(u)
+#
+#   Convolution is along the u-axis (detector columns) only.
+#   Implemented in the frequency domain via FFT: multiply by |f| (× window).
+#   The `* du` factor is the Riemann-sum scaling of the continuous convolution.
+#   Zero-padding to the next power-of-2 prevents circular-convolution artefacts.
+#
+#   Available kernels: 'ram_lak' | 'shepp_logan' | 'hann' | 'cosine'
 def ramp_filter(weighted, geo, filter_name='ram_lak', use_gpu=True):
-    """
-    1-D filter along the column axis (u-direction) of each projection.
-    Zero-padding to next power-of-2 avoids circular convolution artefacts.
-    H *= du — Riemann-sum scaling of the convolution integral.
-
-    Kernels: 'ram_lak' | 'shepp_logan' | 'hann' | 'cosine'
-    """
     fft_gpu = use_gpu and _GPU and _CUFFT
     xp      = cp if fft_gpu else np
 
     n_cols = weighted.shape[2]
-    du     = float(geo.dDetector[1])
-    fc     = 1.0 / (2.0 * du)
-    n_pad  = int(2 ** np.ceil(np.log2(2 * n_cols)))
+    du     = float(geo.dDetector[1])        # detector pixel pitch in mm
+    fc     = 1.0 / (2.0 * du)              # Nyquist frequency
+    n_pad  = int(2 ** np.ceil(np.log2(2 * n_cols)))  # next power-of-2 ≥ 2·n_cols
 
-    freqs = xp.fft.fftfreq(n_pad, d=du)
-    absf  = xp.abs(freqs)
-    fn    = absf / fc
+    freqs = xp.fft.fftfreq(n_pad, d=du)    # frequency axis matching the FFT output
+    absf  = xp.abs(freqs)                  # |f| — the pure ramp
+    fn    = absf / fc                      # normalised frequency ∈ [0, 1]
 
+    # Each kernel is |f| optionally multiplied by a window that suppresses noise
     kernels = {
         'ram_lak':     lambda: absf,
         'shepp_logan': lambda: absf * xp.sinc(fn / 2.0),
@@ -126,24 +125,29 @@ def ramp_filter(weighted, geo, filter_name='ram_lak', use_gpu=True):
     if filter_name not in kernels:
         raise ValueError(f"Unknown filter '{filter_name}'. Choose: {list(kernels)}")
 
-    H    = (kernels[filter_name]() * du).astype(xp.float32)
-    sino = xp.pad(xp.asarray(weighted, dtype=xp.float32), [(0,0), (0,0), (0, n_pad - n_cols)])
-    out  = xp.real(xp.fft.ifft(xp.fft.fft(sino, axis=2) * H[xp.newaxis, xp.newaxis], axis=2))
-    return _to_cpu(out[:, :, :n_cols].astype(xp.float32))
+    H           = (kernels[filter_name]() * du).astype(xp.float32)  # frequency-domain filter
+    sino_padded = xp.pad(xp.asarray(weighted, dtype=xp.float32), [(0,0), (0,0), (0, n_pad - n_cols)])
+    out         = xp.real(xp.fft.ifft(xp.fft.fft(sino_padded, axis=2) * H[xp.newaxis, xp.newaxis], axis=2))
+    return _to_cpu(out[:, :, :n_cols].astype(xp.float32))  # discard padding
 
 
-# ── Step C: Backprojection ────────────────────────────────────────────────────
-
+# ── Step C: Weighted backprojection  [Image Eq. 5] ──────────────────────────
+#
+#   f̂(x,y,z) = (1/2) ∫₀²π  (R_s / U)²  ·  g2(u_p, v_p, β)  dβ
+#
+#   R_s = DSO  (source-to-isocentre distance)
+#
+#   For each voxel (x, y, z) at projection angle θ:
+#     U   = DSO + x·sinθ − y·cosθ        source-to-voxel-plane distance
+#     u_p = DSD · (x·cosθ + y·sinθ) / U  projected detector column (mm)
+#     v_p = DSD · z / U                  projected detector row (mm)
+#
+#   The (DSO/U)² weight corrects for the diverging cone beam (magnification).
+#   The 1/2 · dβ factor discretises the continuous integral.
+#
+#   Note: the sign convention in U differs from some references only because
+#   the rotation direction is defined differently (θ vs. β); the physics is identical.
 def backproject(filtered, geo, angles, use_gpu=True):
-    """
-    FDK Eq. 10:
-        f(x,y,z) = (1/2) ∫ [DSO/U]² · g_filtered(u_p, v_p, θ) dθ
-
-    For voxel (x,y,z) at angle θ:
-        U   = DSO + x·sin(θ) − y·cos(θ)    [source-to-voxel-plane distance]
-        u_p = DSD · (x·cosθ + y·sinθ) / U  [detector column, mm]
-        v_p = DSD · z / U                   [detector row, mm]
-    """
     xp = _xp(use_gpu)
 
     DSD, DSO       = float(geo.DSD), float(geo.DSO)
@@ -157,7 +161,7 @@ def backproject(filtered, geo, angles, use_gpu=True):
     # Per-angle Δθ via centred differences (handles non-uniform spacing)
     ang           = np.asarray(angles, dtype=np.float64)
     d_theta       = np.empty(len(ang))
-    d_theta[1:-1] = (ang[2:] - ang[:-2]) / 2.0
+    d_theta[1:-1] = (ang[2:] - ang[:-2]) / 2.0 # Central differences for interior angles
     d_theta[0]    = ang[1] - ang[0]
     d_theta[-1]   = ang[-1] - ang[-2]
 
@@ -183,18 +187,26 @@ def backproject(filtered, geo, angles, use_gpu=True):
     for i, theta in enumerate(ang):
         cos_t, sin_t = float(np.cos(theta)), float(np.sin(theta))
 
-        U2D   = DSO + X2D * sin_t - Y2D * cos_t
-        U2D   = xp.where(xp.abs(U2D) < 1e-6, 1e-6, U2D)
-        col2D = (DSD / U2D * (X2D * cos_t + Y2D * sin_t) - off_h) / du + c_cen
-        w2D   = (DSO**2 / U2D**2).astype(xp.float32)
-        aw    = float(d_theta[i]) / 2.0
-        proj  = filtered_gpu[i] if (use_gpu and _GPU) else filtered[i].astype(np.float32)
+        # ── U: source-to-voxel-plane distance  (denominator in Eq. 5) ──────
+        U2D  = DSO + X2D * sin_t - Y2D * cos_t
+        U2D  = xp.where(xp.abs(U2D) < 1e-6, 1e-6, U2D)  # avoid /0 singularity
+
+        # Precompute DSD/U once — shared by column projection, row projection,
+        # and the (DSO/U)² weight.  Avoids three separate large-array divisions.
+        dsd_U = (DSD / U2D).astype(xp.float32)           # DSD/U  (magnification factor)
+
+        # Projected detector coordinates of each XY voxel (mm → pixel index)
+        col2D = (dsd_U * (X2D * cos_t + Y2D * sin_t) - off_h) / du + c_cen  # u_p → col
+        w2D   = (DSO / U2D).astype(xp.float32) ** 2      # (DSO/U)²  — divergence weight
+
+        aw   = float(d_theta[i]) / 2.0                   # (1/2)·dβ  — quadrature weight
+        proj = filtered_gpu[i] if (use_gpu and _GPU) else filtered[i].astype(np.float32)
 
         for z0 in range(0, nZ, z_chunk):
-            z1   = min(z0 + z_chunk, nZ)
-            v_p  = (DSD / U2D)[xp.newaxis] * z[z0:z1, xp.newaxis, xp.newaxis]
-            row  = r_cen - (v_p - off_v) / dv
-            col  = xp.broadcast_to(col2D, row.shape)
+            z1  = min(z0 + z_chunk, nZ)
+            v_p = dsd_U[xp.newaxis] * z[z0:z1, xp.newaxis, xp.newaxis]  # v_p = DSD·z/U (mm)
+            row = r_cen - (v_p - off_v) / dv                              # v_p → row index
+            col = xp.broadcast_to(col2D, row.shape)
 
             if use_gpu and _GPU:
                 vals = cpndi.map_coordinates(proj, xp.stack([row.ravel(), col.ravel()]),
