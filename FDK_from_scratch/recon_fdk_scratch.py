@@ -28,24 +28,27 @@ from data_processing_FDK_3D import (load_images, generate_collapsed_sinogram,
                                      selecionar_roi_I0, get_I0_from_roi)
 from export_volumes import export_volume_to_nii, export_volume_HU
 
-# ── GPU backend (GPU-only mode) ──────────────────────────────────────────────
+# ── GPU backend (optional CuPy)
 try:
     import cupy as cp
     from cupyx.scipy import ndimage as cpndi
-except Exception as e:
-    raise RuntimeError(
-        "CuPy is required for GPU-only mode. Install a matching cupy-cuda package for your CUDA version."
-    ) from e
-
-# Running in GPU-only mode
-_GPU = True
-_CUFFT = hasattr(cp, 'fft') and callable(getattr(cp.fft, 'fft', None))
+    _GPU = True
+    _CUFFT = hasattr(cp, 'fft') and callable(getattr(cp.fft, 'fft', None))
+except Exception:
+    cp = None
+    cpndi = None
+    _GPU = False
+    _CUFFT = False
 
 def _xp(use_gpu=True):
-    return cp
+    if use_gpu and _GPU:
+        return cp
+    return np
 
 def _to_cpu(arr):
-    return cp.asnumpy(arr) if isinstance(arr, cp.ndarray) else np.asarray(arr)
+    if cp is not None and isinstance(arr, cp.ndarray):
+        return cp.asnumpy(arr)
+    return np.asarray(arr)
 
 
 # ── Pre-processing helpers ────────────────────────────────────────────────────
@@ -65,7 +68,7 @@ def downsample_block_mean_pad(proj, f):
 
 
 
-# ── Step A: Cosine pre-weighting  [Image Eq. 3] ─────────────────────────────
+# ── Step A: Cosine pre-weighting  ─────────────────────────────
 #
 #   g1(u, v, β) = g(u, v, β) · R_d / sqrt(R_d² + u² + v²)
 #
@@ -82,17 +85,22 @@ def preweight(sinogram, geo, use_gpu=True):
     off_h, off_v   = float(geo.offDetector[1]), float(geo.offDetector[0])
     DSD            = float(geo.DSD)
 
-    # Physical detector coordinates (mm) centred on the beam axis
+
+    # Physical detector coordinates (mm) centred on the beam axis.
+    # `off_h` / `off_v` are detector offsets in millimetres (geo.offDetector)
+    # computed from the calibrated pixel shift inside `setup_geometry`.
+    # These offsets realign the detector coordinate system to the calibrated detector centre before weighting.
+
     u = (xp.arange(n_cols) - (n_cols - 1) / 2.0) * du + off_h
     v = ((n_rows - 1) / 2.0 - xp.arange(n_rows)) * dv + off_v  # row 0 = top → flip
-    U2D, V2D = xp.meshgrid(u, v)
+    U2D, V2D = xp.meshgrid(u, v) # detector coordinates in mm, shape (n_rows, n_cols)
 
     # Cosine weight: DSD / sqrt(DSD² + u² + v²)
     W = (DSD / xp.sqrt(DSD**2 + U2D**2 + V2D**2)).astype(xp.float32)
     return _to_cpu(xp.asarray(sinogram, dtype=xp.float32) * W[xp.newaxis])
 
 
-# ── Step B: Ramp filter  [Image Eq. 4] ──────────────────────────────────────
+# ── Step B: Ramp filter  ──────────────────────────────────────
 #
 #   g2(u, v, β) = g1(u, v, β) ⊗ h_ramp(u)
 #
@@ -115,19 +123,10 @@ def ramp_filter(weighted, geo, filter_name='ram_lak', use_gpu=True):
     absf  = xp.abs(freqs)                  # |f| — the pure ramp
     fn    = absf / fc                      # normalised frequency ∈ [0, 1]
 
-    # Each kernel is |f| optionally multiplied by a window that suppresses noise
-    kernels = {
-        'ram_lak':     lambda: absf,
-        'shepp_logan': lambda: absf * xp.sinc(fn / 2.0),
-        'hann':        lambda: absf * xp.where(absf <= fc, 0.5 + 0.5 * xp.cos(np.pi * fn), 0.0),
-        'cosine':      lambda: absf * xp.where(absf <= fc, xp.cos(0.5 * np.pi * fn), 0.0),
-    }
-    if filter_name not in kernels:
-        raise ValueError(f"Unknown filter '{filter_name}'. Choose: {list(kernels)}")
 
-    H           = (kernels[filter_name]() * du).astype(xp.float32)  # frequency-domain filter
+    H = (absf * du).astype(xp.float32)  # frequency-domain Ram-Lak filter
     sino_padded = xp.pad(xp.asarray(weighted, dtype=xp.float32), [(0,0), (0,0), (0, n_pad - n_cols)])
-    out         = xp.real(xp.fft.ifft(xp.fft.fft(sino_padded, axis=2) * H[xp.newaxis, xp.newaxis], axis=2))
+    out = xp.real(xp.fft.ifft(xp.fft.fft(sino_padded, axis=2) * H[xp.newaxis, xp.newaxis], axis=2))
     return _to_cpu(out[:, :, :n_cols].astype(xp.float32))  # discard padding
 
 
@@ -147,8 +146,10 @@ def ramp_filter(weighted, geo, filter_name='ram_lak', use_gpu=True):
 #
 #   Note: the sign convention in U differs from some references only because
 #   the rotation direction is defined differently (θ vs. β); the physics is identical.
+
 def backproject(filtered, geo, angles, use_gpu=True):
     xp = _xp(use_gpu)
+    gpu_mode = use_gpu and _GPU
 
     DSD, DSO       = float(geo.DSD), float(geo.DSO)
     nZ, nY, nX     = [int(v) for v in geo.nVoxel]
@@ -171,18 +172,16 @@ def backproject(filtered, geo, angles, use_gpu=True):
 
     X2D, Y2D = xp.meshgrid(x, y, indexing='xy')
     volume   = xp.zeros((nZ, nY, nX), dtype=xp.float32)
-    z_chunk  = 64 if (use_gpu and _GPU) else 16
+    z_chunk  = 64 if gpu_mode else 16
 
-    backend  = 'GPU' if (use_gpu and _GPU) else 'CPU'
-    fft_note = '' if _CUFFT else ' (FFT on CPU)'
-    print(f"  {len(ang)} angles → {nZ}×{nY}×{nX}  [{backend}{fft_note}]")
-
-    # Transfer the entire filtered sinogram to GPU once, avoiding 800 individual
-    # PCIe transfers inside the angle loop (~30-60s saving on this dataset).
-    if use_gpu and _GPU:
+    # Optionally transfer the entire filtered sinogram to GPU once to avoid
+    # repeated PCIe transfers inside the angle loop.
+    if gpu_mode:
         filtered_gpu = cp.asarray(filtered, dtype=cp.float32)
 
     t0 = time.perf_counter()
+    n_ang = len(ang)
+    progress_step = max(1, n_ang // 10)
 
     for i, theta in enumerate(ang):
         cos_t, sin_t = float(np.cos(theta)), float(np.sin(theta))
@@ -195,12 +194,17 @@ def backproject(filtered, geo, angles, use_gpu=True):
         # and the (DSO/U)² weight.  Avoids three separate large-array divisions.
         dsd_U = (DSD / U2D).astype(xp.float32)           # DSD/U  (magnification factor)
 
-        # Projected detector coordinates of each XY voxel (mm → pixel index)
+        # Projected detector coordinates of each XY voxel (mm → pixel index).
+        # `off_h` and `off_v` are millimetre offsets (geo.offDetector) derived
+        # from the calibrated pixel shift. We subtract these mm offsets from
+        # the projected physical coordinates and then divide by `du`/`dv`
+        # (mm/px) to obtain pixel indices — this is how the calibrated
+        # detector offset shifts the projection sampling on the pixel grid.
         col2D = (dsd_U * (X2D * cos_t + Y2D * sin_t) - off_h) / du + c_cen  # u_p → col
         w2D   = (DSO / U2D).astype(xp.float32) ** 2      # (DSO/U)²  — divergence weight
 
         aw   = float(d_theta[i]) / 2.0                   # (1/2)·dβ  — quadrature weight
-        proj = filtered_gpu[i] if (use_gpu and _GPU) else filtered[i].astype(np.float32)
+        proj = filtered_gpu[i] if gpu_mode else filtered[i].astype(np.float32)
 
         for z0 in range(0, nZ, z_chunk):
             z1  = min(z0 + z_chunk, nZ)
@@ -208,7 +212,7 @@ def backproject(filtered, geo, angles, use_gpu=True):
             row = r_cen - (v_p - off_v) / dv                              # v_p → row index
             col = xp.broadcast_to(col2D, row.shape)
 
-            if use_gpu and _GPU:
+            if gpu_mode:
                 vals = cpndi.map_coordinates(proj, xp.stack([row.ravel(), col.ravel()]),
                                              order=1, mode='constant', cval=0.0)
             else:
@@ -218,11 +222,11 @@ def backproject(filtered, geo, angles, use_gpu=True):
 
             volume[z0:z1] += aw * vals.reshape(z1-z0, nY, nX).astype(xp.float32) * w2D[xp.newaxis]
 
-        if (i+1) % max(1, len(ang)//10) == 0:
+        if (i+1) % progress_step == 0:
             el = time.perf_counter() - t0
-            print(f"    {i+1:4d}/{len(ang)}  {el:5.0f}s  ETA {el/(i+1)*(len(ang)-i-1):5.0f}s")
+            print(f"    {i+1:4d}/{n_ang}  {el:5.0f}s  ETA {el/(i+1)*(n_ang-i-1):5.0f}s")
 
-    if use_gpu and _GPU:
+    if gpu_mode:
         del filtered_gpu
 
     return _to_cpu(volume).astype(np.float32)
@@ -252,6 +256,9 @@ def main(tiff_folder, cfg, output_folder=None, use_gpu=True):
         del proj_norm;  gc.collect()
 
     print(f"\n── Phase 3: FDK  [filter: {cfg['filter_type']}] ──")
+
+
+
     geo, angles = setup_geometry(
         proj_final.shape,
         cfg['voxel_size'] * f,
@@ -267,9 +274,9 @@ def main(tiff_folder, cfg, output_folder=None, use_gpu=True):
     sinogram = np.transpose(proj_final, (2, 0, 1)).copy().astype(np.float32)
     del proj_final;  gc.collect()
 
-    weighted = preweight(sinogram, geo, use_gpu);                            del sinogram;  gc.collect()
-    filtered = ramp_filter(weighted, geo, cfg['filter_type'], use_gpu);      del weighted;  gc.collect()
-    volume   = backproject(filtered, geo, angles, use_gpu);                  del filtered;  gc.collect()
+    weighted = preweight(sinogram, geo, use_gpu);                            
+    filtered = ramp_filter(weighted, geo, cfg['filter_type'], use_gpu);      
+    volume   = backproject(filtered, geo, angles, use_gpu);                  
 
     print(f"\nVolume {volume.shape}  range [{volume.min():.4f}, {volume.max():.4f}]")
 
@@ -289,7 +296,6 @@ def main(tiff_folder, cfg, output_folder=None, use_gpu=True):
     return volume
 
 
-# ── Config ────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
 
     CONFIG = {

@@ -3,12 +3,6 @@ recon_astra_fdk.py
 ==================
 FDK cone-beam CT reconstruction using the ASTRA Toolbox.
 
-Pipeline:
-  Phase 1 – Data loading & I0 selection        ← SHARED with TIGRE / scratch
-  Phase 2 – Crop, normalise, downsample         ← SHARED with TIGRE / scratch
-  Phase 3 – ASTRA geometry + FDK_CUDA          ← *** ASTRA SPECIFIC ***
-  Phase 4 – Napari viewer & NIfTI export        ← SHARED with TIGRE / scratch
-
 Run in the ct_recon conda environment:
   conda activate ct_recon
   python recon_astra_fdk.py
@@ -38,16 +32,9 @@ from crop_projections import select_crop_region, apply_crop_to_projections
 from data_processing_FDK_3D import (load_images, generate_collapsed_sinogram,
                                      selecionar_roi_I0, get_I0_from_roi)
 
-# ============================================================
-#  ASTRA IMPORT
-# ============================================================
 import astra
-# ============================================================
 
-
-# ---------------------------------------------------------------------------
 # Shared helper functions  (identical in TIGRE / ASTRA / scratch scripts)
-# ---------------------------------------------------------------------------
 
 def normalize_projections(projections_raw, I0_override=None):
     print("--> Normalizing cropped projections...")
@@ -84,9 +71,6 @@ def print_volume_info(volume, geo=None):
 
 # ============================================================
 #  ASTRA-SPECIFIC: geometry builder
-#  Compare this section with the equivalent in:
-#    - recon_tigre_fdk.py   → tigre.geometry + tigre.FDK()
-#    - recon_fdk_scratch.py → manual backprojection loop
 # ============================================================
 
 def build_astra_geometry(geo, angles):
@@ -99,9 +83,6 @@ def build_astra_geometry(geo, angles):
       [uX,   uY,   uZ  ]   horizontal detector axis (scaled by pixel pitch)
       [vX,   vY,   vZ  ]   vertical   detector axis (scaled by pixel pitch)
 
-    Convention (same as TIGRE):
-      X = right,  Y = into scanner at theta=0,  Z = up
-      theta=0 → source at -Y, increases CCW viewed from above.
     """
     DSO   = float(geo.DSO)
     DOD   = float(geo.DSD - geo.DSO)
@@ -143,7 +124,8 @@ def build_astra_geometry(geo, angles):
         vectors[i] = [srcX, srcY, srcZ, dX, dY, dZ, ux, uy, uz, vx, vy, vz]
 
     n_rows, n_cols = int(geo.nDetector[0]), int(geo.nDetector[1])
-    proj_geom = astra.create_proj_geom('cone_vec', n_rows, n_cols, vectors)
+    proj_geom = astra.create_proj_geom('cone_vec', n_rows, n_cols, vectors) # is used to create the projection geometry for cone-beam CT reconstruction using the ASTRA Toolbox. 
+    #The 'cone_vec' type indicates that the geometry is defined by a set of vectors, which specify the source and detector positions and orientations for each projection angle.
 
     nZ, nY, nX = [int(v) for v in geo.nVoxel]
     dZ, dY, dX = [float(v) for v in geo.dVoxel]
@@ -183,51 +165,21 @@ def run_astra_fdk(sinogram, proj_geom, vol_geom):
 
     return volume
 
-# ============================================================
-#  END OF ASTRA-SPECIFIC SECTION
-# ============================================================
-
-
-def print_geometry_summary(geo, angles):
-    print("\n  GEOMETRY  (CTGeometry → ASTRA cone_vec)")
-    print(f"  DSD            {geo.DSD:.1f} mm")
-    print(f"  DSO            {geo.DSO:.1f} mm")
-    print(f"  DOD            {geo.DSD - geo.DSO:.1f} mm")
-    print(f"  nDetector      {geo.nDetector}  [rows, cols]")
-    print(f"  dDetector      {geo.dDetector*1000} μm")
-    print(f"  offDetector    {geo.offDetector} mm  [vertical, horizontal]")
-    print(f"  nVoxel         {geo.nVoxel}  [Z, Y, X]")
-    print(f"  dVoxel         {geo.dVoxel*1000} μm")
-    print(f"  Angles         {len(angles)} × "
-          f"[{np.degrees(angles[0]):.1f}° … {np.degrees(angles[-1]):.1f}°]")
-    print(f"  Filter         Ram-Lak (fixed in ASTRA FDK_CUDA)")
-
-
-# ---------------------------------------------------------------------------
-# Main pipeline
-# ---------------------------------------------------------------------------
 
 def main(tiff_folder, configurations, output_folder=None):
 
-    # ── PHASE 1  –  DATA LOADING & I0 SELECTION  (shared) ──────────────────
-    print("\n" + "="*60)
+
     print("PHASE 1: DATA LOADING & I0 SELECTION")
-    print("="*60)
-
     projections_raw = load_images(tiff_folder)
-    if projections_raw is None or projections_raw.size == 0:
-        raise ValueError(f"No images loaded from: {tiff_folder}")
-
     sino_raw       = generate_collapsed_sinogram(projections_raw)
     roi_background = selecionar_roi_I0(sino_raw)
+    if roi_background is None:
+        raise RuntimeError("I0 ROI not selected. Draw a ROI on the collapsed sinogram and click Confirm.")
     mean_I0        = get_I0_from_roi(sino_raw, roi_background, projections_raw.shape[0])
     del sino_raw;  gc.collect()
 
-    # ── PHASE 2  –  CROP | NORMALISE | DOWNSAMPLE  (shared) ────────────────
-    print("\n" + "="*60)
-    print("PHASE 2: CROP  |  NORMALISE  |  DOWNSAMPLE")
-    print("="*60)
 
+    print("PHASE 2: CROP  |  NORMALISE  |  DOWNSAMPLE")
     crop_params         = select_crop_region(projections_raw[:, :, 0])
     projections_cropped = apply_crop_to_projections(projections_raw, crop_params)
     del projections_raw;  gc.collect()
@@ -243,19 +195,15 @@ def main(tiff_folder, configurations, output_folder=None):
     else:
         projections_final = projections_norm
 
-    # ── PHASE 3  –  ASTRA GEOMETRY & FDK RECONSTRUCTION  (ASTRA specific) ──
-    print("\n" + "="*60)
+
     print("PHASE 3: ASTRA GEOMETRY & FDK_CUDA RECONSTRUCTION")
-    print("         *** THIS IS THE ASTRA-SPECIFIC PHASE ***")
-    print("         Compare with Phase 3 in:")
-    print("           recon_tigre_fdk.py   → tigre.FDK()")
-    print("           recon_fdk_scratch.py → manual Ram-Lak + backproject")
-    print("="*60)
+    print("ASTRA-SPECIFIC PHASE ")
+
 
     shift_val          = configurations['calibrated_shift_px'] / f
     effective_voxel_sz = configurations['voxel_size'] * f
 
-    # Build geometry (ASTRA version uses CTGeometry, not tigre.geometry)
+    # Build geometry 
     geo, angles = setup_geometry(
         projections_final.shape,
         effective_voxel_sz,
@@ -269,7 +217,6 @@ def main(tiff_folder, configurations, output_folder=None):
         detector_tilt     = configurations.get('detector_tilt', 0),
     )
 
-    print_geometry_summary(geo, angles)
 
     # Build ASTRA geometry objects
     proj_geom, vol_geom = build_astra_geometry(geo, angles)
@@ -280,6 +227,7 @@ def main(tiff_folder, configurations, output_folder=None):
     # ASTRA expects:     (n_rows, n_angles, n_cols  )  → transpose (0, 2, 1)
     # TIGRE expects:     (n_angles, n_rows, n_cols  )  → transpose (2, 0, 1)
     # ---------------------------------------------------------------
+
     sinogram = np.transpose(projections_final, (0, 2, 1)).copy().astype(np.float32)
     del projections_final;  gc.collect()
 
@@ -293,11 +241,8 @@ def main(tiff_folder, configurations, output_folder=None):
     print("--> ✓ Reconstruction complete")
     print_volume_info(volume, geo)
 
-    # ── PHASE 4  –  VISUALISATION & EXPORT  (shared) ───────────────────────
-    print("\n" + "="*60)
-    print("PHASE 4: VISUALISATION & EXPORT")
-    print("="*60)
 
+    print("PHASE 4: VISUALISATION & EXPORT")
     voxel_scale = tuple(geo.dVoxel)
     viewer = napari.Viewer()
     viewer.add_image(volume, scale=voxel_scale, name="ASTRA FDK – CT Volume")
@@ -317,9 +262,6 @@ def main(tiff_folder, configurations, output_folder=None):
     return volume
 
 
-# ---------------------------------------------------------------------------
-# Configuration – edit before running
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
 
     CONFIG = {
