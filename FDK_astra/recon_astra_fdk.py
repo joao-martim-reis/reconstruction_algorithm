@@ -80,8 +80,8 @@ def build_astra_geometry(geo, angles):
     ASTRA cone_vec — each of the 12 values per projection:
       [srcX, srcY, srcZ]   source position
       [dX,   dY,   dZ  ]   detector centre position
-      [uX,   uY,   uZ  ]   horizontal detector axis (scaled by pixel pitch)
-      [vX,   vY,   vZ  ]   vertical   detector axis (scaled by pixel pitch)
+      [uX,   uY,   uZ  ]   horizontal detector axis 
+      [vX,   vY,   vZ  ]   vertical   detector axis 
 
     """
     DSO   = float(geo.DSO)
@@ -98,7 +98,8 @@ def build_astra_geometry(geo, angles):
         ct, st = np.cos(theta), np.sin(theta)
 
         # Source
-        srcX, srcY, srcZ = DSO * st, -DSO * ct, 0.0
+        srcX, srcY, srcZ = DSO * st, -DSO * ct, 0.0 #this ,0.0 is because the source is assumed to be in the plane of rotation (Z=0) in this geometry setup. If the source had a vertical offset, it would be added to srcZ here.
+        #the srcY is -DSO * ct because the source is located at a distance DSO from the center of rotation, and as the gantry rotates, the source moves in a circular path around the object. The negative sign ensures that the source moves in the correct direction (clockwise or counterclockwise) depending on the angle theta.
 
         # Detector centre + offsets
         dX = -DOD * st + off_h * ct
@@ -129,9 +130,9 @@ def build_astra_geometry(geo, angles):
 
     nZ, nY, nX = [int(v) for v in geo.nVoxel]
     dZ, dY, dX = [float(v) for v in geo.dVoxel]
-    vol_geom = astra.create_vol_geom(
+    vol_geom = astra.create_vol_geom( #vol_geom is used to create the volume geometry for the reconstructed image. It defines the size and spatial resolution of the volume that will be reconstructed from the projection data.
         nY, nX, nZ,
-        -nX*dX/2,  nX*dX/2,
+        -nX*dX/2,  nX*dX/2, # The volume is centered at the origin, so the minimum and maximum coordinates are set to -nX*dX/2 and nX*dX/2 for the X-axis, -nY*dY/2 and nY*dY/2 for the Y-axis, and -nZ*dZ/2 and nZ*dZ/2 for the Z-axis. This means that the reconstructed volume will span from -nX*dX/2 to nX*dX/2 in the X direction, from
         -nY*dY/2,  nY*dY/2,
         -nZ*dZ/2,  nZ*dZ/2,
     )
@@ -146,17 +147,18 @@ def run_astra_fdk(sinogram, proj_geom, vol_geom):
     sinogram shape:  (n_rows, n_angles, n_cols)   ← ASTRA convention
     volume shape:    (nZ, nY, nX)                 ← same as TIGRE convention
     """
-    sino_id = astra.data3d.create('-sino', proj_geom, sinogram)
-    vol_id  = astra.data3d.create('-vol',  vol_geom,  0)
+    sino_id = astra.data3d.create('-sino', proj_geom, sinogram) #astra.data3d.create is used to create a 3D data object in the ASTRA Toolbox. The '-sino' argument specifies that the data object being created is a sinogram, which is a common format for storing projection data in computed tomography (CT). The proj_geom argument provides the geometry information for the projections, and the sinogram argument contains the actual projection data that will be used for reconstruction.
+    vol_id  = astra.data3d.create('-vol',  vol_geom,  0) #vol_id is created as an empty volume (initialized to zeros) with the specified volume geometry. This volume will be filled with the reconstructed image after running the FDK algorithm. The vol_geom argument defines the size and spatial resolution of the reconstructed volume, while the 0 argument initializes all voxel values to zero before reconstruction.
 
-    cfg = astra.astra_dict('FDK_CUDA')
-    cfg['ProjectionDataId']     = sino_id
+    cfg = astra.astra_dict('FDK_CUDA') #astra.astra_dict is a function in the ASTRA Toolbox that creates a configuration dictionary for a specified reconstruction algorithm. In this case, 'FDK_CUDA' indicates that the configuration being created is for the FDK (Feldkamp-Davis-Kress) algorithm implemented on NVIDIA GPUs using CUDA. The resulting cfg dictionary will contain default parameters for the FDK_CUDA algorithm, which can then be modified as needed before running the reconstruction.
+    cfg['ProjectionDataId']     = sino_id 
     cfg['ReconstructionDataId'] = vol_id
 
     alg_id = astra.algorithm.create(cfg)
-    astra.algorithm.run(alg_id)
+    astra.algorithm.run(alg_id) #astra.algorithm.run is used to execute the specified reconstruction algorithm in the ASTRA Toolbox. The alg_id argument is the identifier of the algorithm that was created and configured earlier using astra.algorithm.create. When this function is called, it runs the FDK_CUDA reconstruction algorithm using the provided projection data (sino_id) and fills the reconstruction volume (vol_id) with the resulting image.
 
-    volume = astra.data3d.get(vol_id).astype(np.float32)
+    volume = astra.data3d.get(vol_id).astype(np.float32) #astra.data3d.get is used to retrieve the reconstructed volume data from the ASTRA Toolbox after running the reconstruction algorithm. 
+    #The vol_id argument specifies the identifier of the volume data object that was created earlier to hold the reconstructed image. The resulting volume is then converted to a NumPy array of type float32 for further processing or analysis.
 
     # Free GPU memory immediately
     astra.algorithm.delete(alg_id)

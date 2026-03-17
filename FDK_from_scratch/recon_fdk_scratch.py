@@ -93,7 +93,7 @@ def preweight(sinogram, geo, use_gpu=True):
 
     u = (xp.arange(n_cols) - (n_cols - 1) / 2.0) * du + off_h
     v = ((n_rows - 1) / 2.0 - xp.arange(n_rows)) * dv + off_v  # row 0 = top → flip
-    U2D, V2D = xp.meshgrid(u, v) # detector coordinates in mm, shape (n_rows, n_cols)
+    U2D, V2D = xp.meshgrid(u, v) # detector coordinates in mm, shape (n_rows, n_cols), meshgrid is used to create 2D arrays of u and v coordinates for the entire detector plane
 
     # Cosine weight: DSD / sqrt(DSD² + u² + v²)
     W = (DSD / xp.sqrt(DSD**2 + U2D**2 + V2D**2)).astype(xp.float32)
@@ -116,12 +116,14 @@ def ramp_filter(weighted, geo, filter_name='ram_lak', use_gpu=True):
 
     n_cols = weighted.shape[2]
     du     = float(geo.dDetector[1])        # detector pixel pitch in mm
-    fc     = 1.0 / (2.0 * du)              # Nyquist frequency
+    
+    #padding - adding extra pixels/elements to the array to increase its size, typically to the next power of 2, to optimize the performance of the FFT and prevent circular convolution artefacts.
     n_pad  = int(2 ** np.ceil(np.log2(2 * n_cols)))  # next power-of-2 ≥ 2·n_cols
+
 
     freqs = xp.fft.fftfreq(n_pad, d=du)    # frequency axis matching the FFT output
     absf  = xp.abs(freqs)                  # |f| — the pure ramp
-    fn    = absf / fc                      # normalised frequency ∈ [0, 1]
+
 
 
     H = (absf * du).astype(xp.float32)  # frequency-domain Ram-Lak filter
