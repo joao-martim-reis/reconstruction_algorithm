@@ -112,10 +112,25 @@ def get_I0_from_roi(sino_raw, roi_background):
     return mean_I0
 
 
-def normalize_sinogram(sinogram_raw, I0_val):
+def normalize_sinogram(sinogram_raw, I0_val=None):
     """
     Normalization: -ln(I / I0)
     """
+    if I0_val is None:
+        I0_val = float(np.percentile(sinogram_raw, 99))
+        print(f"    WARNING: No I0_override provided. Using 99th percentile fallback: {I0_val:.2f}")
+        print("    It is strongly recommended to provide I0_override from a calibrated ROI.")
+    else:
+        I0_val = float(I0_val)
+
+    if I0_val <= 0:
+        raise ValueError(f"I0 value is {I0_val:.4f} - must be positive. Check your ROI selection or raw data.")
+
+    median_projection = float(np.percentile(sinogram_raw, 50))
+    if I0_val < median_projection:
+        print(f"    WARNING: I0 ({I0_val:.2f}) is below the median projection value ({median_projection:.2f}).")
+        print("    This likely means I0 is too low and will produce incorrect attenuation values.")
+
     ratio = sinogram_raw / (I0_val + 1e-9) 
     ratio[ratio < 1e-6] = 1e-6
     

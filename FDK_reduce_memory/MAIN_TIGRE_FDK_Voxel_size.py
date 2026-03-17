@@ -36,15 +36,25 @@ def print_volume_info(volume, geo=None):
 def normalize_projections(projections_raw, I0_override=None):
     """
     Normalizes projections using -log(I/I0).
-    This function receives ALREADY CROPPED projections, drastically reducing the number of mathematical operations.
+    This function should receive FULL projections before any spatial cropping.
     """
-    print("--> Normalizing cropped projections...")
+    print("--> Normalizing full projections...")
     print(f"    Input shape: {projections_raw.shape}, Memory size: {projections_raw.nbytes / 1e6:.1f} MB")
 
     if I0_override is None:
-        I0 = float(np.percentile(projections_raw, 1))
+        I0 = float(np.percentile(projections_raw, 99))
+        print(f"    WARNING: No I0_override provided. Using 99th percentile fallback: {I0:.2f}")
+        print("    It is strongly recommended to provide I0_override from a calibrated ROI.")
     else:
         I0 = float(I0_override)
+
+    if I0 <= 0:
+        raise ValueError(f"I0 value is {I0:.4f} - must be positive. Check your ROI selection or raw data.")
+
+    median_projection = float(np.percentile(projections_raw, 50))
+    if I0 < median_projection:
+        print(f"    WARNING: I0 ({I0:.2f}) is below the median projection value ({median_projection:.2f}).")
+        print("    This likely means I0 is too low and will produce incorrect attenuation values.")
 
     # Convert to float32 for calculations (lighter than float64)
     projections_raw = projections_raw.astype(np.float32)
@@ -132,28 +142,28 @@ def main(tiff_folder, configurations, output_folder=None):
     
     print("\nPHASE 2: SPATIAL OPTIMIZATION (MEMORY REDUCTION)")
 
-    crop_params = select_crop_region(projections_raw[:, :, 0])  # Step 2.1: Interactively define crop region on first projection
-    projections_cropped_raw = apply_crop_to_projections(projections_raw, crop_params)  # Step 2.2: Apply crop to ALL raw projections
+    projections_norm = normalize_projections(projections_raw, I0_override=mean_I0)  # Step 2.1: Normalize full projections using Beer-Lambert law: -log(I/I0)
     del projections_raw
     gc.collect()
     
-    projections_norm = normalize_projections(projections_cropped_raw, I0_override=mean_I0)  # Step 2.3: Normalize cropped projections using Beer-Lambert law: -log(I/I0)
-    del projections_cropped_raw
+    crop_params = select_crop_region(projections_norm[:, :, 0])  # Step 2.2: Interactively define crop region on normalized first projection
+    projections_cropped = apply_crop_to_projections(projections_norm, crop_params)  # Step 2.3: Apply crop to ALL normalized projections
+    del projections_norm
     gc.collect()
     
     f = configurations['downsample']  # Step 2.4: Optional downsampling (applied AFTER crop for maximum efficiency) 
     if f > 1:
         print(f"Downsampling by factor {f}x...")
         print(f"This will reduce maximum achievable resolution")
-        projections_final = downsample_block_mean_pad(projections_norm, f).astype(np.float32) #convert to float32 to save memory
+        projections_final = downsample_block_mean_pad(projections_cropped, f).astype(np.float32) #convert to float32 to save memory
         print(f"Final shape: {projections_final.shape}")
-        del projections_norm
+        del projections_cropped
         gc.collect()
     elif f < 1:
         print(f"Error: Downsampling factor must be >=1 or equal to 1")
         return None
     else:
-        projections_final = projections_norm
+        projections_final = projections_cropped
     
 
 

@@ -38,7 +38,8 @@ def select_crop_roi(projections, line, config):
     print("    Click 2 points (opposite corners) or close window to skip")
     
     sino_raw = extract_sinogram_raw(projections, line)
-    img_preview = reconstruct_single(sino_raw, config['pixel_size'], 
+    sino_norm = normalize_sinogram(sino_raw)
+    img_preview = reconstruct_single(sino_norm, config['pixel_size'], 
                                      config['calibrated_shift_px'], 
                                      config['shift_sign'], 
                                      config['default_filter'])
@@ -79,23 +80,24 @@ def apply_crop(img, crop_roi):
 def show_shift_comparison(projections, line, mean_I0, config, crop_roi):
     """
     Phase 1: Show shift effect for ONE specific line.
-    Compare RAW with and without shift.
+    Compare normalized sinogram reconstructions with and without shift.
     """
     print(f"Shift Analysis - Line {line}")
     
     sino_raw = extract_sinogram_raw(projections, line)
+    sino_norm = normalize_sinogram(sino_raw, mean_I0)
     
     shift_px = config['calibrated_shift_px']
     
     configs = [
-        {"label": "RAW - No Shift", "shift": 0.0},
-        {"label": f"RAW - Shift: {shift_px:.2f} px", "shift": shift_px}
+        {"label": "Normalized - No Shift", "shift": 0.0},
+        {"label": f"Normalized - Shift: {shift_px:.2f} px", "shift": shift_px}
     ]
     
     results = []
     for cfg in configs:
         print(f"  Reconstructing: {cfg['label']}...")
-        img = reconstruct_single(sino_raw, config['pixel_size'], cfg['shift'], 
+        img = reconstruct_single(sino_norm, config['pixel_size'], cfg['shift'], 
                                 config['shift_sign'], config['default_filter'])
         img_cropped = apply_crop(img, crop_roi)
         results.append({"label": cfg['label'], "image": img_cropped})
@@ -137,10 +139,7 @@ def show_shift_comparison(projections, line, mean_I0, config, crop_roi):
 def show_filter_comparison(projections, lines, mean_I0, config, crop_roi):
     """
     Show effect of different FILTERS for multiple lines.
-    Use RAW sinogram with SHIFT applied (better visualization).
-    
-    To use normalization instead of RAW, replace:
-        sino_raw -> sino_norm = normalize_sinogram(sino_raw, mean_I0)
+    Use normalized sinogram with SHIFT applied.
     """
     print(f"Filter Comparison")
     print(f"Chosen lines in the sinogram: {lines}")
@@ -150,10 +149,7 @@ def show_filter_comparison(projections, lines, mean_I0, config, crop_roi):
     
     for line in lines:
         sino_raw = extract_sinogram_raw(projections, line)
-        
-        # Use RAW for better visualization
-        # To normalize: sino_norm = normalize_sinogram(sino_raw, mean_I0)
-        sino_to_use = sino_raw
+        sino_to_use = normalize_sinogram(sino_raw, mean_I0)
         
         results = []
         for filt in config['filters']:
