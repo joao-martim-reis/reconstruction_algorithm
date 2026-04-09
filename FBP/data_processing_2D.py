@@ -131,8 +131,19 @@ def normalize_sinogram(sinogram_raw, I0_val=None):
         print(f"    WARNING: I0 ({I0_val:.2f}) is below the median projection value ({median_projection:.2f}).")
         print("    This likely means I0 is too low and will produce incorrect attenuation values.")
 
-    ratio = sinogram_raw / (I0_val + 1e-9) 
-    ratio[ratio < 1e-6] = 1e-6
+    ratio = sinogram_raw.astype(np.float32, copy=True)
+    ratio /= (I0_val + 1e-9)
+
+    total_pixels = ratio.size
+    clipped_above_count = np.count_nonzero(ratio > 1.2)
+    clipped_below_count = np.count_nonzero(ratio < 0)
+    clipped_above_pct = (clipped_above_count / total_pixels) * 100.0
+    clipped_below_pct = (clipped_below_count / total_pixels) * 100.0
+    print(f"    Clipping report (I/I0 ratio):")
+    print(f"      - Pixels > 1.2: {clipped_above_pct:.4f}% ({clipped_above_count}/{total_pixels})")
+    print(f"      - Pixels < 0:   {clipped_below_pct:.4f}% ({clipped_below_count}/{total_pixels})")
+
+    np.clip(ratio, 1e-6, 1.2, out=ratio)
     
     sino_norm = -np.log(ratio)
     sino_norm[sino_norm < 0] = 0

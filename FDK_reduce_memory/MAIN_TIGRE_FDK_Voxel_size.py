@@ -36,9 +36,9 @@ def print_volume_info(volume, geo=None):
 def normalize_projections(projections_raw, I0_override=None):
     """
     Normalizes projections using -log(I/I0).
-    This function should receive FULL projections before any spatial cropping.
+    This function receives cropped projections for better memory efficiency.
     """
-    print("--> Normalizing full projections...")
+    print("--> Normalizing cropped projections...")
     print(f"    Input shape: {projections_raw.shape}, Memory size: {projections_raw.nbytes / 1e6:.1f} MB")
 
     if I0_override is None:
@@ -56,13 +56,22 @@ def normalize_projections(projections_raw, I0_override=None):
         print(f"    WARNING: I0 ({I0:.2f}) is below the median projection value ({median_projection:.2f}).")
         print("    This likely means I0 is too low and will produce incorrect attenuation values.")
 
-    # Convert to float32 for calculations (lighter than float64)
-    projections_raw = projections_raw.astype(np.float32)
-    ratio = projections_raw / (I0 + 1e-6)# Avoid division by zero
-    ratio = np.clip(ratio, 1e-6, 1.2)# np clip to avoid log(0) and extreme values
-    
-    projections_norm = -np.log(ratio) # Beer-Lambert law: -log(I/I0)
-    projections_norm[projections_norm < 0] = 0 # Remove negative values (artifacts)
+    projections_norm = projections_raw.astype(np.float32, copy=True)
+    projections_norm = projections_norm / (I0 + 1e-6)  # Avoid division by zero
+
+    total_pixels = projections_norm.size
+    clipped_above_count = np.count_nonzero(projections_norm > 1.2)
+    clipped_below_count = np.count_nonzero(projections_norm < 0)
+    clipped_above_pct = (clipped_above_count / total_pixels) * 100.0
+    clipped_below_pct = (clipped_below_count / total_pixels) * 100.0
+    print(f"    Clipping report (I/I0 ratio):")
+    print(f"      - Pixels > 1.2: {clipped_above_pct:.4f}% ({clipped_above_count}/{total_pixels})")
+    print(f"      - Pixels < 0:   {clipped_below_pct:.4f}% ({clipped_below_count}/{total_pixels})")
+
+    np.clip(projections_norm, 1e-6, 1.2, out=projections_norm)  # Avoid log(0) and extreme values
+    np.log(projections_norm, out=projections_norm)
+    projections_norm *= -1.0  # Beer-Lambert law: -log(I/I0)
+    projections_norm[projections_norm < 0] = 0  # Remove negative values (artifacts)
     print(f"    ✓ Normalization complete")
 
     return projections_norm
@@ -142,13 +151,13 @@ def main(tiff_folder, configurations, output_folder=None):
     
     print("\nPHASE 2: SPATIAL OPTIMIZATION (MEMORY REDUCTION)")
 
-    projections_norm = normalize_projections(projections_raw, I0_override=mean_I0)  # Step 2.1: Normalize full projections using Beer-Lambert law: -log(I/I0)
+    crop_params = select_crop_region(projections_raw[:, :, 0])  # Step 2.1: Interactively define crop region on first raw projection
+    projections_cropped_raw = apply_crop_to_projections(projections_raw, crop_params)  # Step 2.2: Apply crop to all raw projections
     del projections_raw
     gc.collect()
-    
-    crop_params = select_crop_region(projections_norm[:, :, 0])  # Step 2.2: Interactively define crop region on normalized first projection
-    projections_cropped = apply_crop_to_projections(projections_norm, crop_params)  # Step 2.3: Apply crop to ALL normalized projections
-    del projections_norm
+
+    projections_cropped = normalize_projections(projections_cropped_raw, I0_override=mean_I0)  # Step 2.3: Normalize cropped projections
+    del projections_cropped_raw
     gc.collect()
     
     f = configurations['downsample']  # Step 2.4: Optional downsampling (applied AFTER crop for maximum efficiency) 
@@ -237,14 +246,14 @@ def main(tiff_folder, configurations, output_folder=None):
 if __name__ == "__main__":
 
     CONFIG = {
-        'voxel_size': 25,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
+        'voxel_size': 50,  # μm - CHOOSE YOUR DESIRED RESOLUTION HERE
         'calibrated_shift_px': 19.5, #5.12 / 24.5 / 19.5 (bar pattern nivel 2) / 21.5 (Fantoma agua) / -20.922 (bar pattern horizontal 1) / -9.5 (bar patter 3) / 75 bar pattern horizontal / -1 bar pattern horizontal 2
         'shift_sign': 1,
         'total_angle': 2 * np.pi,  # Total rotation angle in degrees (e.g., 180, 360)
         'DSD': (457),  # +31 Distance Source to Detector (mm)
         'DSO': (224),  # +31 Distance Source to Object (mm)
         'downsample': 1, # NOTE: This affects maximum achievable resolution!
-        'filter_type': 'ram_lak',  # Options: 'ram_lak', 'shepp_logan', 'cosine', 'hamming', 'hann'
+        'filter_type': 'shepp_logan',  # Options: 'ram_lak', 'shepp_logan', 'cosine', 'hamming', 'hann'
         'detector_tilt': 0,  # Detector tilt in radians (from calculate_detector_tilt.py)
         'output_folder_NiFT': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\reconstructed_volumes_Nift',
         'filtered_volumes_folder': r'C:\Users\joaomartimreis\Desktop\Joao_CT\Volumes_reconstrucao\Filtered_volumes.Nift'
@@ -252,4 +261,5 @@ if __name__ == "__main__":
 
 
     folder = r'C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Analise_Resultados\Projections_SDD_457+S0D_211\Bar_pattern_nivel_2'  # Path to your TIFF projections folder
+    #folder = r"C:\Users\joaomartimreis\Desktop\Joao_CT\Imagens\Sistema_roldanas\teste1"
     vol = main(folder, CONFIG, output_folder=CONFIG.get('output_folder_NiFT'))

@@ -3,6 +3,33 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 
 
+def show_cropped_sinogram(cropped_projections):
+    """
+    Display the collapsed sinogram after cropping.
+    """
+    if cropped_projections.size == 0:
+        print("    WARNING: Cropped projections are empty. Sinogram preview skipped.")
+        return
+
+    sino_cropped = np.sum(cropped_projections, axis=0)
+
+    fig, ax = plt.subplots(figsize=(14, 5))
+    ax.imshow(sino_cropped, cmap='gray', aspect='auto', origin='upper')
+    ax.set_title("Collapsed Sinogram After Cropping", fontsize=12)
+    ax.set_ylabel("Detector (px)")
+    ax.set_xlabel("θ (degree)")
+
+    n_proj = sino_cropped.shape[1]
+    ticks_deg = np.arange(0, 361, 30)
+    tick_positions = [int(d * n_proj / 360.0) for d in ticks_deg]
+    tick_labels = [f"{int(d)}°" for d in ticks_deg]
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels(tick_labels)
+
+    plt.tight_layout()
+    plt.show(block=True)
+
+
 def select_crop_region(first_projection):
     """
     Interactive interface to select crop region on RAW projections (before normalization).
@@ -210,5 +237,8 @@ def apply_crop_to_projections(projections, crop_params):
     print(f"    Cropped shape:  {cropped.shape}")
     print(f"    Memory reduction: {projections.nbytes / 1e6:.1f} MB → {cropped.nbytes / 1e6:.1f} MB")
     print(f"    Reduction factor: {projections.nbytes / cropped.nbytes:.2f}x")
+
+    print("    Showing collapsed sinogram after cropping...")
+    show_cropped_sinogram(cropped)
     
     return cropped
