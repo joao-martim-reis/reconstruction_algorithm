@@ -63,6 +63,8 @@ def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle,
     print(f"Effective detector pixel: {effective_detector_pixel:.4f} mm")
     print(f"Shift (mm): {shift_mm:.4f} mm (physical hardware offset)")
     
+
+    
     if crop_params is not None:
         original_center = crop_params['original_center_col']
         new_center = (crop_params['col_end'] + crop_params['col_start']) / 2.0
@@ -77,16 +79,22 @@ def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle,
         print(f"Crop shift (mm): {crop_shift_mm:.4f} mm")
         print(f"Total shift (mm): {total_shift_mm:.4f} mm")
         
+        #geo.offDetector = np.array([0.0, 23.7505])
         geo.offDetector = np.array([0.0, total_shift_mm])
     else:
         geo.offDetector = np.array([0.0, shift_mm_sign])
+        #geo.offDetector = np.array([0.0, 23.7505])
     
+  
+    geo.rotDetector = np.array([0, 0, -0.0142565])
     geo.offOrigin = np.array([0, 0, 0])
 
     # --- DETECTOR TILT CORRECTION ---
     # Value obtained from the calculate_detector_tilt.py script
     # In TIGRE, in-plane rotation is the Z component (index 2)
-    geo.rotDetector = np.array([0, 0, detector_tilt])
+
+
+    #geo.rotDetector = np.array([0, 0, detector_tilt])
     
     angles = np.linspace(0, total_angle, n_angles, endpoint=False)
 

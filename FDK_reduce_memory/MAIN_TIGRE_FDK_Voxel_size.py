@@ -35,7 +35,7 @@ def print_volume_info(volume, geo=None):
 
 def normalize_projections(projections_raw, I0_override=None):
     """
-    Normalizes projections using -log(I/I0).
+    Normalizes projections using -log(I/I0). 
     This function receives cropped projections for better memory efficiency.
     """
     print("--> Normalizing cropped projections...")
