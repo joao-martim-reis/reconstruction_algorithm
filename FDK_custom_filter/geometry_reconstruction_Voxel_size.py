@@ -36,11 +36,17 @@ def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle,
 
     height, width, n_angles = img_shape #this uses the cropped image shape
     
+
+    #Detector arguments definition
+
     geo.nDetector = np.array([height, width]) # Detector size after crop (if applied)
 
     # This should NEVER change based on voxel_size!
     geo.dDetector = np.array([effective_detector_pixel, effective_detector_pixel]) # CRITICAL FIX: Detector pixel spacing is the PHYSICAL pixel size
     geo.sDetector = geo.nDetector * geo.dDetector  # Physical size of detector in mm
+
+
+    #Voxel arguments definition
 
     geo.dVoxel = np.array([voxel_size_mm, voxel_size_mm, voxel_size_mm]) # Voxel spacing: use voxel_size_mm directly (user's choice for reconstruction)
 
@@ -48,7 +54,8 @@ def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle,
         int(np.ceil(geo.sDetector[0] / voxel_size_mm)),
         int(np.ceil(geo.sDetector[1] / voxel_size_mm)),
         int(np.ceil(geo.sDetector[1] / voxel_size_mm))
-    ])
+    ]) 
+    #the 3rd dimension is set to match the width to ensure isotropic voxels in x and z, and enough coverage in y
     
     geo.sVoxel = geo.nVoxel * geo.dVoxel  # Real physical size of the volume in mm
     geo.DSD = DSD
@@ -62,6 +69,8 @@ def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle,
     print(f"Shift (downsampled pixels): {shift_pixels:.3f} px")
     print(f"Effective detector pixel: {effective_detector_pixel:.4f} mm")
     print(f"Shift (mm): {shift_mm:.4f} mm (physical hardware offset)")
+    
+
     
     if crop_params is not None:
         original_center = crop_params['original_center_col']
@@ -77,16 +86,16 @@ def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle,
         print(f"Crop shift (mm): {crop_shift_mm:.4f} mm")
         print(f"Total shift (mm): {total_shift_mm:.4f} mm")
         
+        #geo.offDetector = np.array([0.0, 23.7505])
         geo.offDetector = np.array([0.0, total_shift_mm])
     else:
         geo.offDetector = np.array([0.0, shift_mm_sign])
+        #geo.offDetector = np.array([0.0, 23.7505])
     
+  
+    geo.rotDetector = np.array([0, 0, 0])
     geo.offOrigin = np.array([0, 0, 0])
 
-    # --- DETECTOR TILT CORRECTION ---
-    # Value obtained from the calculate_detector_tilt.py script
-    # In TIGRE, in-plane rotation is the Z component (index 2)
-    geo.rotDetector = np.array([0, 0, detector_tilt])
     
     angles = np.linspace(0, total_angle, n_angles, endpoint=False)
 

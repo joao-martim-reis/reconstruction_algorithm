@@ -1,694 +1,802 @@
-# Copilot.md — Coding Standards & Best Practices
+# copilot.md — Python Engineering Standards
 
-> Written from a Software Engineering perspective.
-> This file defines how code should be written, structured, and maintained across any project.
-> GitHub Copilot is the AI assistant used in this project. Model selection is handled manually per task.
-
----
-
-## Core Philosophy
-
-- Clarity over cleverness — code is read far more than it is written. Optimize for the next person reading it (including future you).
-- Simple and explainable — if you cannot explain what a block of code does in one sentence, it needs to be simplified.
-- Modular by default — every piece of logic should have one job, one place, and be independently testable.
-- Consistency is king — a consistent codebase is easier to navigate, debug, and extend than a clever one.
-- Explicit over implicit — never assume. Make the code say exactly what it does.
+> **Scope:** This file governs all code written in this project — by humans and AI alike.
+> **Domain:** Python — machine learning, deep learning, data science, and scientific computing pipelines.
+> **AI Usage:** GitHub Copilot assists development. Every suggestion is a draft. Every rule here applies without exception.
+> **Living document:** Update this file when new patterns are adopted or old ones are retired.
 
 ---
 
-## GitHub Copilot Usage Guidelines
+## Table of Contents
 
-Copilot is a tool to assist, not to replace engineering judgment. Treat every Copilot suggestion as a draft that needs review.
-
-```
-Model selection guidance:
-- Use a reasoning/advanced model for architecture decisions, complex logic, refactoring, and debugging hard problems.
-- Use a faster model for boilerplate generation, simple completions, and repetitive patterns.
-- Never accept a suggestion without reading it. Copilot does not know your domain, your constraints, or your intent.
-```
-
-Rules when working with Copilot:
-
-```
-- Always review generated code line by line before accepting it.
-- Copilot suggestions must follow every rule in this file — they are not exempt.
-- If Copilot generates something clever but hard to read, simplify it before using it.
-- Do not let Copilot name your variables, functions, or files without verifying they follow naming conventions.
-- Write your comment or function signature first — this guides Copilot toward better completions.
-- Use Copilot for acceleration, not for understanding. If you do not understand what was generated, do not use it.
-```
+1. [Core Philosophy](#1-core-philosophy)
+2. [AI-Assisted Coding Guidelines](#2-ai-assisted-coding-guidelines)
+3. [Project Structure](#3-project-structure)
+4. [Naming Conventions](#4-naming-conventions)
+5. [Comments & Documentation](#5-comments--documentation)
+6. [Logging & Experiment Tracking](#6-logging--experiment-tracking)
+7. [Modularity & Functions](#7-modularity--functions)
+8. [Error Handling](#8-error-handling)
+9. [Data Pipelines](#9-data-pipelines)
+10. [Model & Algorithm Design](#10-model--algorithm-design)
+11. [Types & Validation](#11-types--validation)
+12. [Testing Standards](#12-testing-standards)
+13. [Reproducibility](#13-reproducibility)
+14. [Performance](#14-performance)
+15. [Security & Data Governance](#15-security--data-governance)
+16. [Configuration & Environment](#16-configuration--environment)
+17. [Dependencies](#17-dependencies)
+18. [Version Control & Commits](#18-version-control--commits)
+19. [Code Review Checklist](#19-code-review-checklist)
+20. [Tooling](#20-tooling)
+21. [Key Principles](#21-key-principles)
 
 ---
 
-## Project Structure
+## 1. Core Philosophy
+
+- **Clarity over cleverness** — Code is read far more than it is written. A dense one-liner that needs a paragraph to explain is not clever — it is a liability.
+- **Reproducibility is correctness** — A result that cannot be reproduced is not a valid result. Every experiment must be traceable to a seed, a config, a dataset, and a commit.
+- **Explicit over implicit** — Every assumption — shapes, units, value ranges, data types — must be stated in code or in a comment. Hidden conventions break silently.
+- **Modular by default** — Data loading, preprocessing, modelling, training, and evaluation are separate concerns. They must be independently testable and replaceable.
+- **Fail fast** — Validate inputs at every boundary. Crash loudly on bad data. Silent failures in numerical pipelines produce wrong results with no error.
+- **Consistency** — Follow established patterns throughout the project. Propose changes through review rather than introducing local exceptions.
+- **Measure before optimising** — Profile before rewriting. Do not add complexity for performance without data that justifies it.
+
+---
+
+## 2. AI-Assisted Coding Guidelines
+
+Copilot accelerates development. It does not replace domain knowledge or engineering judgment.
+
+- **Read every suggestion before accepting.** Copilot does not know your data, your constraints, or your numerical requirements.
+- **Write the docstring and type signature first.** A precise function signature produces better completions than an empty body.
+- **Verify numerical code manually.** Loss functions, normalisations, and metrics are frequently plausible-looking but subtly wrong.
+- **Never let Copilot finalise variable or function names** without checking them against the naming rules in Section 4.
+- **If you cannot explain it, do not ship it.** Understand every accepted suggestion before committing it.
+- **Simplify generated code.** If a suggestion is correct but dense, rewrite it for readability before committing.
+- **All rules in this document apply to Copilot output.** AI-generated code is not exempt.
+
+---
+
+## 3. Project Structure
 
 ```
 project/
-├── src/               # All source code lives here
-│   ├── modules/       # Self-contained feature modules
-│   ├── utils/         # Shared helper functions (pure, reusable)
-│   ├── services/      # External integrations (API, DB, third-party)
-│   ├── config/        # App-wide configuration and constants
-│   ├── middleware/    # Request/response pipeline handlers
-│   ├── models/        # Data models and schema definitions
-│   └── types/         # Shared type definitions and interfaces
-├── tests/             # Mirror of src/ structure for test files
-├── docs/              # Documentation and architectural notes
-├── scripts/           # One-off or automation scripts (not app logic)
-├── .env.example       # Template for environment variables (never commit .env)
-├── CLAUDE.md          # This file
-└── README.md          # Project overview and setup guide
+├── src/
+│   ├── data/            # Dataset classes, loaders, transforms
+│   ├── models/          # Model and algorithm definitions only — no training logic
+│   ├── pipelines/       # End-to-end orchestration — calls other modules, no logic of its own
+│   ├── evaluation/      # Metrics, evaluation loops, result visualisation
+│   ├── inference/       # Inference-only pipeline, stripped of training dependencies
+│   ├── config/          # Configuration schemas and defaults
+│   └── utils/           # Shared, stateless helper functions
+├── tests/
+│   ├── unit/            # Unit tests — mirrors src/ structure
+│   ├── integration/     # Pipeline-level tests using small synthetic data
+│   └── fixtures/        # Shared test data, synthetic inputs, factory functions
+├── notebooks/           # Exploratory analysis only — never production code
+├── scripts/             # One-off automation scripts
+├── configs/             # YAML experiment configs — no hardcoded values in src/
+├── docs/                # Architecture notes, dataset cards, model cards
+├── .env.example         # Documented template for all required environment variables
+├── pyproject.toml       # Single source of truth for dependencies and tooling
+├── copilot.md           # This file
+└── README.md            # Project overview and setup guide
 ```
 
-> Rule: Every folder should be self-explanatory. A new developer should understand the project layout within 5 minutes.
+**Rules:**
+- A new team member must understand the layout within 5 minutes.
+- `models/` contains architecture and algorithm definitions only — no training loops, no data loading.
+- `pipelines/` orchestrates — it calls functions from other modules and contains no algorithm logic itself.
+- `notebooks/` is a scratchpad. Code that needs to run reliably must live in `src/` and have tests.
+- Every module exposes a clean public API through its `__init__.py`. Never import from deep internal paths outside the module.
 
 ---
 
-## Naming Conventions
+## 4. Naming Conventions
 
-```js
-// Variables: camelCase, descriptive nouns — never abbreviations
-const userAccountBalance = 0;            // correct
-const uab = 0;                           // wrong — cryptic, meaningless outside your head
+Follow PEP 8 without exception.
 
-// Functions: camelCase, start with a verb — describe what they DO
-function calculateTotalPrice() {}        // correct — verb + noun
-function total() {}                      // wrong — too vague
+### General Rules
 
-// Classes: PascalCase, singular noun
-class InvoiceGenerator {}                // correct
-class invoices {}                        // wrong
+| Thing | Convention | Example |
+|---|---|---|
+| Variables and functions | `snake_case` | `learning_rate`, `compute_loss` |
+| Classes | `PascalCase` | `ImageDataset`, `UNetModel` |
+| Constants | `SCREAMING_SNAKE_CASE` | `MAX_EPOCHS`, `DEFAULT_LR` |
+| Modules and files | `snake_case` | `data_loader.py`, `train_utils.py` |
+| Booleans | Prefix with `is_`, `has_`, `use_`, `should_` | `is_training`, `use_amp` |
+| Collections | Plural nouns | `image_paths`, `batch_losses` |
 
-// Constants: SCREAMING_SNAKE_CASE
-const MAX_RETRY_ATTEMPTS = 3;            // correct
-const maxRetry = 3;                      // wrong — looks like a mutable variable
+### Be Descriptive — No Abbreviations
 
-// Files: kebab-case for utilities, PascalCase for components/classes
-// user-profile.js      correct
-// UserProfile.jsx      correct for React/component files
-// userprofile.js       wrong
+```python
+# ✓ Clear and specific
+reconstruction_error = compute_error(prediction, target)
+validation_image_paths = load_paths(split="val")
 
-// Booleans: always prefix with is / has / can / should / was
-const isLoading = true;                  // correct
-const loading = true;                    // wrong — ambiguous, could be anything
-
-// Arrays: always plural
-const userList = [];                     // correct
-const user = [];                         // wrong — implies a single item
+# ✗ Cryptic — meaningless outside the author's head
+recon_err = compute_error(pred, tgt)
+val_imgs = load_paths(split="val")
 ```
 
----
+### Name Arrays and Tensors by Their Content and Shape
 
-## Comments — Comment the WHY, Not the WHAT
+In numerical and ML code, a variable name must tell a reader what the data represents — not just that it is "some array". Include the shape context when it aids clarity.
 
-> Code shows what is happening. Comments explain why it was done this way.
+```python
+# ✓ Shape-aware and content-aware
+image_batch          # a batch of images, shape (B, C, H, W)
+class_probabilities  # per-class softmax outputs, shape (B, num_classes)
+sinogram             # projection data, shape (angles, detectors)
 
-```js
-// Correct — explains the reasoning behind the decision
-// Cap retries at 3 to avoid overwhelming the upstream service during outages
-const MAX_RETRY_ATTEMPTS = 3;
-
-// Wrong — just restates the code, adds zero value
-// Set max retry to 3
-const MAX_RETRY_ATTEMPTS = 3;
+# ✗ Shape-blind — the reader has no idea what this contains
+x
+data
+out
+tmp
+inp
+arr
 ```
 
-### Function Documentation
+### Functions
 
-```js
-// Every function gets a JSDoc block explaining its purpose, parameters, and return value
-/**
- * Calculates the final price after applying a discount percentage.
- * @param {number} basePrice  - The original price before discount
- * @param {number} discount   - Discount as a percentage between 0 and 100
- * @returns {number}          - Final price rounded to 2 decimal places
- */
-function applyDiscount(basePrice, discount) {
-  // Reject invalid discount ranges before doing any math
-  if (discount < 0 || discount > 100) throw new Error("Discount must be between 0 and 100");
+Start with a verb. The name must describe what the function does.
 
-  // Subtract the calculated discount amount from the original price
-  const discountAmount = (basePrice * discount) / 100;
-  return parseFloat((basePrice - discountAmount).toFixed(2));
-}
-```
+```python
+# ✓
+def compute_validation_loss(...)
+def load_dataset(...)
+def apply_augmentation(...)
+def save_checkpoint(...)
 
-### Inline Comment Rules
-
-```js
-// Comment non-obvious logic — do not narrate obvious steps
-function parseUserToken(token) {
-  // JWT is structured as header.payload.signature — extract the middle section
-  const parts = token.split(".");
-
-  // Payload is Base64-encoded; decode it to get the raw JSON string
-  const decoded = atob(parts[1]);
-
-  return JSON.parse(decoded);
-}
-
-// Use markers for known issues and decisions
-// TODO:   something that needs to be done later
-// FIXME:  something broken that needs a fix
-// HACK:   a workaround that should be replaced — explain why it exists
-// NOTE:   important context that future developers must know
-// REVIEW: this section needs a second pair of eyes before shipping
-```
-
-### What Not to Do in Comments
-
-```js
-// Do not leave commented-out dead code
-// const oldFunction = () => { ... }     // wrong — delete it, Git history exists
-
-// Do not write separator lines anywhere in the codebase
-// ============================================================   wrong
-// -----------------------------------------------------------    wrong
-// ************************************************************   wrong
-
-// Do not use print-style debug separators
-console.log("=".repeat(60));    // wrong — never do this
-console.log("--- START ---");   // wrong
-console.log("**********");      // wrong
+# ✗
+def loss(...)       # noun — what does it do?
+def dataset(...)    # noun
+def augment(...)    # too vague — augment what?
 ```
 
 ---
 
-## Logging — Use Sparingly and with Purpose
+## 5. Comments & Documentation
 
-Logs exist to help diagnose real problems in production and development. They are not a debugging scratchpad and not a way to trace execution flow during development.
+> **Rule:** Code shows *what* is happening. Comments explain *why* — including domain decisions, mathematical reasoning, and non-obvious numerical choices.
 
-```js
-// Wrong — noise that pollutes output and gets accidentally left in
-console.log("here");
-console.log("data", data);
-console.log("=".repeat(60));
-console.log("--- entering function ---");
-console.log(user);
-console.log("step 1");
+### Comment the Why, Not the What
 
-// Correct — a structured logger used consistently across the project
-import logger from "@/utils/logger";
+```python
+# ✓ Explains the reasoning — adds value the code alone cannot
+# Clamp outputs to [0, 1] before computing SSIM.
+# SSIM is undefined outside this range and returns misleadingly low values
+# for visually correct reconstructions that have minor out-of-range drift.
+output = output.clamp(0.0, 1.0)
 
-// Log only what is necessary to diagnose a real failure
-logger.error("Payment processing failed", { orderId, reason: error.message });
-
-// Log meaningful state transitions at the appropriate level
-logger.info("User session started", { userId });
-logger.warn("Rate limit approaching threshold", { userId, requestCount });
+# ✗ Restates the code — zero value
+# Clamp output between 0 and 1
+output = output.clamp(0.0, 1.0)
 ```
 
-### Logging Levels — Use the Right One
+### Docstrings — Google Style, Required on All Public Functions and Classes
+
+```python
+def train_one_epoch(model, loader, optimiser, loss_fn, device):
+    """Run a single training epoch and return the mean loss.
+
+    Args:
+        model: The model in training mode. Caller must call model.train() beforehand.
+        loader: DataLoader yielding batches as dicts with "input" and "target" keys.
+        optimiser: Configured optimiser. Scheduler is managed by the caller.
+        loss_fn: Callable with signature (prediction, target) -> scalar tensor.
+        device: Compute device. All tensors will be moved here before the forward pass.
+
+    Returns:
+        Mean loss over all batches as a Python float.
+
+    Raises:
+        RuntimeError: If a non-finite loss is encountered and cannot be recovered.
+    """
+```
+
+- Include `Args`, `Returns`, and `Raises` for every public function.
+- Add an `Example:` block whenever the usage is non-obvious.
+- For functions that accept or return arrays or tensors, document the expected shape and value range in the argument description.
+
+### Marker Tags
+
+Always include a description. A bare marker is not acceptable.
 
 ```
-logger.error()   — something broke and needs immediate attention
-logger.warn()    — something unusual happened but the system kept running
-logger.info()    — meaningful system event (startup, shutdown, key state transitions)
-logger.debug()   — detailed context for diagnosing specific issues (disabled in production)
+# TODO(name):   Work required before the next release. Link the ticket.
+# FIXME(name):  Known defect. Describe the symptom and the impact.
+# HACK(name):   Temporary workaround. Explain why it exists and how to remove it.
+# NOTE:         Context that all future maintainers must understand.
+# MATH:         Non-trivial operation — include the formula or a reference.
 ```
+
+### What Not to Do
+
+```python
+# ✗ Commented-out dead code — delete it, Git history preserves everything
+# result = old_function(x)
+
+# ✗ Execution trace comments
+# reached this point
+# step 2 done
+
+# ✗ Debug print statements left in code
+print(x.shape)
+print("here")
+```
+
+---
+
+## 6. Logging & Experiment Tracking
+
+### Never Use `print()` in Pipeline Code
+
+```python
+# ✗ Unstructured, not filterable, disappears in production
+print(f"epoch {epoch}, loss: {loss:.4f}")
+
+# ✓ Structured logger — filterable by level, consistent format
+import logging
+logger = logging.getLogger(__name__)
+
+logger.info("Epoch complete", extra={"epoch": epoch, "loss": loss, "lr": current_lr})
+logger.warning("NaN detected in loss", extra={"epoch": epoch, "batch": batch_idx})
+logger.error("Checkpoint save failed", extra={"path": str(path), "reason": str(e)})
+```
+
+### Log Levels
+
+| Level | When to use |
+|---|---|
+| `ERROR` | Pipeline cannot continue. Immediate attention required. |
+| `WARNING` | Anomaly occurred but execution continued (NaN, unexpected range, skipped sample). |
+| `INFO` | Meaningful state transition: run started, dataset loaded, checkpoint saved. |
+| `DEBUG` | Detailed diagnostics for development. Disabled in production. |
+
+### Experiment Tracking
+
+Log all hyperparameters, metrics, and artefacts to a tracker (MLflow, Weights & Biases, or equivalent). Never rely on console output as the sole record of an experiment.
+
+- **Log the full config at the start of every run.**
+- **Log metrics at every epoch** with consistent key names (`train/loss`, `val/psnr`).
+- **Log the Git commit hash** for every run. A result without a code reference cannot be reproduced.
+- **Log all saved artefacts** (checkpoints, plots, result files) so the run is self-contained.
 
 ### Logging Rules
 
+- Never log inside a tight inner loop — log aggregated statistics per epoch or per N steps.
+- Never log raw arrays or tensors — log scalar values, shapes, or summary statistics.
+- Never log sensitive data — file paths containing PII, patient identifiers, credentials.
+- Log anomalies immediately: NaN/Inf in loss or gradients, out-of-range values, skipped samples.
+
+---
+
+## 7. Modularity & Functions
+
+### One Function, One Job
+
+```python
+# ✗ One function doing data loading, preprocessing, training, evaluation, and saving
+def run(config):
+    data = [(img / 255, label) for img, label in load_raw(config.path)]
+    model = build_model(config)
+    for epoch in range(config.epochs):
+        for img, label in data:
+            loss = model(img, label)
+            loss.backward()
+    torch.save(model.state_dict(), "model.pt")
+    print(sum(evaluate(model, img, label) for img, label in data) / len(data))
+
+# ✓ Each concern is its own function — independently testable and replaceable
+def build_dataset(path, transform):   ...
+def build_model(cfg):                 ...
+def train_one_epoch(model, loader):   ...
+def evaluate(model, loader, metrics): ...
+def save_checkpoint(model, path):     ...
+
+def run_pipeline(cfg):
+    # Orchestrator only — no logic, just sequencing
+    dataset   = build_dataset(cfg.data.path, build_transform(cfg))
+    model     = build_model(cfg.model)
+    for epoch in range(cfg.training.epochs):
+        train_loss   = train_one_epoch(model, dataset.train_loader)
+        val_metrics  = evaluate(model, dataset.val_loader, METRICS)
+        save_checkpoint(model, cfg.checkpoint_dir / f"epoch_{epoch}.pt")
 ```
-- Never log inside a loop — log before or after with a summary count or result
-- Never log sensitive data — passwords, tokens, credit cards, personal identifiers
-- Always include context — log WITH relevant IDs and metadata, not just a message string
-- Remove all temporary debug logs before finalizing any code
-- Do not leave console.log anywhere in production-bound code
-- One log per error occurrence — do not log the same error at multiple levels
-- If you are logging more than 2-3 times in a single function, you are logging too much
+
+### Function Length and Parameters
+
+- **Aim for under 30 lines.** If a function is growing, extract named sub-functions.
+- **Maximum 4 positional parameters.** For anything more complex, use a `dataclass` or config object — it is self-documenting at the call site and avoids silent argument-order mistakes.
+
+```python
+# ✗ Easy to silently swap arguments
+def train(model, loader, lr, wd, epochs, device, amp, clip):
+    ...
+
+# ✓ Named, typed, and validated at construction
+@dataclass
+class TrainingConfig:
+    lr: float = 1e-4
+    weight_decay: float = 1e-5
+    num_epochs: int = 100
+    use_amp: bool = True
+    grad_clip_norm: float = 1.0
+
+def train(model, loader, cfg: TrainingConfig):
+    ...
+```
+
+### Guard Clauses — Validate Early, Avoid Nesting
+
+```python
+# ✗ Happy path buried under nested conditions
+def process(data, config):
+    if data is not None:
+        if data.ndim == 3:
+            if not has_nans(data):
+                return _run(data, config)
+    return None
+
+# ✓ Each failure is named and explicit; happy path is obvious
+def process(data, config):
+    if data is None:
+        raise ValueError("data must not be None")
+    if data.ndim != 3:
+        raise ValueError(f"expected 3D array, got shape {data.shape}")
+    if has_nans(data):
+        raise ValueError("data contains NaN values")
+    return _run(data, config)
+```
+
+### Prefer Pure Functions
+
+A pure function takes inputs and returns outputs with no side effects. It is always easier to test, easier to reason about, and safe to parallelise.
+
+---
+
+## 8. Error Handling
+
+### Never Silently Swallow Exceptions
+
+```python
+# ✗ Hides failures — the pipeline continues in a corrupted state
+try:
+    result = run_computation(inputs)
+except Exception:
+    pass
+
+# ✓ Handle deliberately — log context, recover explicitly, or re-raise
+try:
+    result = run_computation(inputs)
+except KnownRecoverableError as e:
+    logger.warning("Computation failed, using fallback", extra={"reason": str(e)})
+    result = fallback_value
+except Exception as e:
+    logger.error("Unexpected failure", extra={"input_id": input_id})
+    raise RuntimeError(f"Computation failed for input '{input_id}'") from e
+```
+
+### Define Domain-Specific Exceptions
+
+```python
+# src/exceptions.py
+class PipelineError(Exception):
+    """Base class for all pipeline errors."""
+
+class DataValidationError(PipelineError):
+    """Input data failed shape, dtype, or value range validation."""
+
+class ConvergenceError(PipelineError):
+    """An iterative solver did not converge within the allowed iterations."""
+
+class CheckpointError(PipelineError):
+    """A model checkpoint could not be loaded or saved."""
+```
+
+Using specific exception types allows callers to handle known failure modes precisely instead of catching `Exception` everywhere.
+
+### Validate at Every Boundary
+
+Check shapes, types, value ranges, and for NaN/Inf before any computation begins — not halfway through it.
+
+```python
+def fit(data, labels, config):
+    if data.shape[0] != labels.shape[0]:
+        raise DataValidationError(
+            f"data and labels must have the same number of samples, "
+            f"got {data.shape[0]} and {labels.shape[0]}"
+        )
+    if has_nans(data):
+        raise DataValidationError("data contains NaN values — check the preprocessing pipeline")
+    # All inputs validated — safe to proceed
+    ...
 ```
 
 ---
 
-## Modularity — One Thing, One Place
+## 9. Data Pipelines
 
-Every function, class, or module does one thing and does it well (Single Responsibility Principle).
+- **Separate loading from preprocessing.** A dataset class loads and indexes raw samples. Transforms handle preprocessing. Composing them in a `DataLoader` is the pipeline's job.
+- **All transforms must be stateless and composable.** A transform takes a sample and returns a transformed sample. It must not depend on external state.
+- **Normalise with dataset-level statistics, not per-sample.** Always compute statistics on the training split only and store them in the config. Never use per-sample min/max normalisation in a model pipeline.
+- **Do not apply training augmentations to validation or test splits.** Augmentation must be conditional on the split.
+- **Document the data state at every stage** — the dtype, shape, and value range after each transform. Put this in comments or docstrings.
+- **Validate samples before returning them.** A `Dataset.__getitem__` must check that the sample it returns is valid. Log and skip corrupted samples — never return garbage silently.
 
-```js
-// Wrong — one function carrying too many responsibilities
-function handleUser(user) {
-  if (!user.email) throw new Error("Missing email");
-  user.name = user.name.trim();
-  db.save(user);
-  emailService.sendWelcome(user.email);
-}
+---
 
-// Correct — each function has exactly one job
-function validateUser(user) {
-  // Ensure required fields are present before any processing occurs
-  if (!user.email) throw new Error("Missing email");
-  if (!user.name) throw new Error("Missing name");
-}
+## 10. Model & Algorithm Design
 
-function formatUser(user) {
-  // Normalize fields to remove whitespace and enforce lowercase email
-  return { ...user, name: user.name.trim(), email: user.email.toLowerCase() };
-}
+- **Model files define architecture only.** No data loading, no training loops, no evaluation code. The model boundary is a `forward()` method or a `fit()` / `predict()` interface.
+- **Document input and output contracts** — expected shape, dtype, and value range — in the class docstring. This is the contract all callers depend on.
+- **Validate inputs in the forward method.** A clear error at the model boundary is far better than a cryptic shape error three layers deep.
+- **Every iterative algorithm must have** a maximum iteration limit, a convergence criterion, and a residual or loss history returned to the caller.
+- **All tunable parameters must come from config.** Regularisation strengths, learning rates, thresholds — nothing is hardcoded.
+- **Prefer small, composable building blocks** over monolithic architectures. Each block must be independently testable.
+- **Save only the state dictionary, not the entire model object.** Whole-object saves break across refactors. Always include the config alongside the weights.
 
-function saveUser(user) {
-  // Persist the validated and formatted user record to the database
-  return db.save(user);
-}
+---
 
-function notifyUser(email) {
-  // Trigger the welcome email after a successful registration
-  return emailService.sendWelcome(email);
-}
+## 11. Types & Validation
 
-// Orchestrate the individual steps in a clear, sequential flow
-async function registerUser(rawUser) {
-  validateUser(rawUser);             // Step 1: reject bad input early
-  const user = formatUser(rawUser);  // Step 2: normalize data
-  await saveUser(user);              // Step 3: persist to database
-  await notifyUser(user.email);      // Step 4: send confirmation email
-}
+### Type Annotations Are Required
+
+All function signatures must include type annotations. Use `from __future__ import annotations` for forward references.
+
+```python
+from __future__ import annotations
+from pathlib import Path
+
+def load_checkpoint(path: Path, device: str = "cpu") -> dict:
+    """Load a model checkpoint from disk."""
+
+def compute_metric(prediction: np.ndarray, target: np.ndarray) -> float:
+    """Compute a scalar metric between prediction and target arrays."""
+```
+
+### Use `dataclasses` for Structured Config and Results
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class TrainingConfig:
+    lr: float = 1e-4
+    num_epochs: int = 100
+    batch_size: int = 16
+    use_amp: bool = True
+
+    def __post_init__(self) -> None:
+        # Validate at construction — fail before any compute starts
+        if self.lr <= 0:
+            raise ValueError(f"lr must be positive, got {self.lr}")
+        if self.num_epochs < 1:
+            raise ValueError(f"num_epochs must be >= 1, got {self.num_epochs}")
+```
+
+### Runtime Validation
+
+TypeScript types are erased at runtime. The same is true in Python — type hints are not enforced at execution. Validate data explicitly:
+
+- Check shapes and dtypes before passing arrays into functions.
+- Check for NaN/Inf in inputs and outputs of numerical operations.
+- Check value ranges where the domain demands it (e.g. probabilities must be in [0, 1]).
+
+---
+
+## 12. Testing Standards
+
+### File Conventions
+
+- Unit tests mirror `src/` exactly: `src/models/unet.py` → `tests/unit/models/test_unet.py`
+- Integration tests live in `tests/integration/` and test pipeline stages with small synthetic data.
+- Fixtures (synthetic arrays, mock configs, factory functions) live in `tests/fixtures/`.
+
+### Structure: Arrange — Act — Assert
+
+```python
+def test_normalise_maps_values_to_unit_range():
+    # Arrange
+    data = np.array([0.0, 50.0, 100.0])
+    mean, std = 50.0, 25.0
+
+    # Act
+    result = normalise(data, mean=mean, std=std)
+
+    # Assert
+    assert result.min() >= -3.0   # within 3 std of zero
+    assert result.max() <=  3.0
+    assert result.dtype == np.float32
+```
+
+### Coverage Requirements
+
+| Layer | Minimum |
+|---|---|
+| Pure utilities | 100% |
+| Core algorithms and operators | 90% |
+| Model architectures | 80% — shape and forward-pass tests required |
+| Pipeline orchestrators | 70% — integration tests cover the rest |
+
+### Testing Rules
+
+- **Deterministic.** Fix all seeds before any test that uses random data.
+- **Isolated.** Unit tests use synthetic data only. Never depend on real datasets or network calls.
+- **Test contracts, not internals.** Tests must not break when you refactor implementation details without changing behaviour.
+- **Test failure paths.** Every `raise` in production code must have a corresponding `pytest.raises` test.
+- **Test numerical properties.** For algorithms: convergence, known outputs on synthetic inputs, boundary conditions.
+- **One clear assertion focus per test.** A failing test must point to exactly one thing.
+
+---
+
+## 13. Reproducibility
+
+- **Fix all random seeds** at the start of every script — Python's `random`, `numpy`, and framework-specific seeds (e.g. `torch.manual_seed`). The seed must come from config, never generated randomly.
+- **Log the full resolved config** at the start of every run.
+- **Log the Git commit hash** for every run. A result without a code reference cannot be reproduced.
+- **Log dataset name, version, and split sizes** at run start.
+- **Checkpoints must include the config** that produced them alongside the weights.
+- **No hardcoded values anywhere in `src/`.** Every parameter lives in a config file.
+- **Deterministic operations where possible.** Be explicit about any setting that trades determinism for speed.
+
+---
+
+## 14. Performance
+
+Profile before optimising. The following are the most common actual bottlenecks — address them in order before touching model code.
+
+- **Data loading is usually the bottleneck.** Check GPU or CPU utilisation. If it is below 80%, the pipeline is starving the compute — fix the data loader first.
+- **Use multiple workers in your data loader.** Tune `num_workers` to the number of available CPU cores.
+- **Cache expensive deterministic operations.** If a preprocessing step produces the same output for the same input every time, compute it once and cache the result.
+- **Parallelize independent operations.** Do not serialise work that can run concurrently.
+- **Use mixed precision training** where supported. It halves memory usage and increases throughput with negligible accuracy impact.
+- **Select only the data you need.** Avoid loading entire datasets into memory when streaming is sufficient.
+- **Never optimise without a measurement.** Add a profiler result or benchmark comparison to any PR that adds complexity for performance reasons.
+
+---
+
+## 15. Security & Data Governance
+
+- **Never commit patient data, sensitive data, or any PII to version control.** Use `.gitignore` aggressively. Enforce with a pre-commit hook that blocks large binary files.
+- **Never commit credentials or secrets.** API keys, passwords, and tokens belong in environment variables only.
+- **Anonymise before logging.** Never log identifiers, file paths containing names, or metadata that could identify individuals.
+- **Document data access controls** in `docs/data_governance.md` — who is authorised to access the data and under what conditions.
+- **Use paths from config, not from user input.** Constructing file paths from unchecked input is a directory traversal risk.
+- **Audit dependencies regularly** for known vulnerabilities. Block merges on high-severity findings.
+
+---
+
+## 16. Configuration & Environment
+
+### .env.example — Document Every Variable
+
+```bash
+# Compute
+CUDA_VISIBLE_DEVICES=0
+
+# Paths
+DATA_ROOT=/data/your-dataset
+CHECKPOINT_DIR=/outputs/checkpoints
+RESULTS_DIR=/outputs/results
+
+# Experiment tracking
+WANDB_API_KEY=replace-with-your-key
+MLFLOW_TRACKING_URI=http://localhost:5000
+
+# External storage (optional)
+S3_BUCKET_NAME=your-bucket
+```
+
+### Rules
+
+- All environment-specific values live in `.env` — never hardcoded in `src/`.
+- Validate all required environment variables at startup. Crash immediately with a clear message if anything is missing.
+- Commit `.env.example` with every variable documented. Never commit `.env`.
+- Load and validate config in one central location so misconfiguration is caught before any compute begins.
+
+---
+
+## 17. Dependencies
+
+- **Pin all versions.** Use exact pins in `pyproject.toml` and commit the lock file.
+- **Audit before adding.** Every new dependency adds maintenance burden and attack surface. Prefer the standard library or an already-present package over adding a new one for a simple task.
+- **Separate runtime from development dependencies.** Linters, test frameworks, and notebooks tools must not be installed in production or inference environments.
+- **Review changelogs before upgrading** core scientific libraries. NumPy, SciPy, and PyTorch minor versions frequently change numerical behaviour in ways that affect results.
+- **Run a vulnerability scanner in CI.** Block merges on high-severity findings.
+
+```toml
+# pyproject.toml
+[project.dependencies]
+numpy      = "==1.26.4"
+torch      = "==2.3.1"
+hydra-core = "==1.3.2"
+mlflow     = "==2.13.0"
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.2.0",
+    "pytest-cov==5.0.0",
+    "ruff==0.4.4",
+    "mypy==1.10.0",
+    "pre-commit==3.7.0",
+]
 ```
 
 ---
 
-## Functions — Rules to Follow
+## 18. Version Control & Commits
 
-```js
-// Rule 1: Functions should be short — aim for under 20-30 lines
-// If a function grows beyond that, it is doing too much. Extract sub-functions.
+### What Never to Commit
 
-// Rule 2: Maximum 3 parameters — use an options object for anything more complex
-// Wrong — hard to read at the call site, easy to mix up argument order
-function createUser(name, email, age, role, isAdmin, isVerified) {}
+```
+.env                         # Real credentials
+data/                        # Raw or processed datasets
+*.npy / *.h5 / *.pt / *.pth  # Large binary files — use a data/artefact registry
+outputs/ / results/          # Experiment outputs — tracked in MLflow or W&B
+__pycache__/ / *.pyc         # Python bytecode
+notebooks/*.ipynb            # Only commit with all outputs cleared
+```
 
-// Correct — self-documenting at the call site
-function createUser({ name, email, age, role, isAdmin, isVerified }) {}
-createUser({ name: "Alice", role: "admin", isAdmin: true, isVerified: false });
+### Branch Naming
 
-// Rule 3: Return predictable values — avoid hidden side effects
-// A function that returns a computed value is always easier to test than one that mutates state
+```
+feature/short-description       New functionality
+fix/short-description           Bug fix
+experiment/short-description    Exploratory model or algorithm change
+refactor/short-description      Code restructuring, no behaviour change
+docs/short-description          Documentation only
+chore/short-description         Maintenance, tooling, dependencies
+```
 
-// Rule 4: Guard clauses — exit early to avoid deep nesting
-// Wrong — deeply nested, hard to trace the logic
-function getDiscount(user) {
-  if (user) {
-    if (user.isPremium) {
-      if (user.yearsActive > 2) {
-        return 20;
-      }
-    }
-  }
-  return 0;
-}
+### Commit Message Format
 
-// Correct — guard clauses make each condition explicit and the happy path obvious
-function getDiscount(user) {
-  if (!user) return 0;                 // No user, no discount
-  if (!user.isPremium) return 0;       // Non-premium users are not eligible
-  if (user.yearsActive <= 2) return 0; // Minimum loyalty period not reached
-  return 20;                           // Loyal premium user qualifies for 20% discount
-}
+```
+<type>(<scope>): <short summary — present tense, max 72 chars>
 
-// Rule 5: Avoid boolean parameters — they are a sign the function does two different things
-// Wrong — caller has no idea what true or false means here
-function fetchUser(id, includeDeleted) {}
+[optional body — explain WHY, not what changed]
 
-// Correct — two explicit functions with clear intent
-function fetchActiveUser(id) {}
-function fetchDeletedUser(id) {}
+[optional footer — Closes #issue, BREAKING CHANGE:]
+```
 
-// Rule 6: Pure functions where possible — same input always produces same output
-// Easier to test, easier to reason about, no hidden state dependencies
-function formatCurrency(amount, currency) {
-  // Format a number as a localized currency string without touching any external state
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
-}
+**Types:** `feat`, `fix`, `experiment`, `refactor`, `test`, `docs`, `chore`, `perf`, `ci`
+
+```
+# ✓ Clear and traceable
+feat(training): add gradient clipping to prevent exploding gradients
+
+Without clipping, training on noisy batches occasionally diverged after
+epoch 30. Clipping at norm=1.0 stabilised training across all runs tested.
+
+Closes #55
+
+# ✗ Meaningless
+fix bug
+update
+wip
+try this
+```
+
+### Pull Requests
+
+- One concern per PR. A refactor and an experiment change belong in separate PRs.
+- Describe **what** changed, **why**, and **how to verify** it.
+- For ML changes: include metric comparisons or loss curves in the description.
+- All CI checks must pass before requesting review.
+- Notebooks must have all outputs cleared before being committed.
+
+---
+
+## 19. Code Review Checklist
+
+Run through this before marking a PR ready for review. Fix anything that does not pass.
+
+```
+[ ] Code runs end-to-end locally on synthetic or small real data
+[ ] All existing tests pass
+[ ] New logic has tests covering normal cases, edge cases, and failure paths
+[ ] No print() statements or debug artefacts remain
+[ ] No hardcoded paths, magic numbers, or values that belong in config
+[ ] Arrays and tensors are named by content, not x / data / out / tmp
+[ ] All public functions and classes have docstrings with Args, Returns, Raises
+[ ] Comments explain WHY — not WHAT
+[ ] No dead code or commented-out blocks
+[ ] Type annotations are present on all function signatures
+[ ] .env.example updated if new environment variables were added
+[ ] No linter errors or type errors (ruff check . && mypy src/)
+[ ] Experiment results are logged in the tracker, not only in the PR
+[ ] Seed is fixed, config is complete, Git hash is logged
+[ ] Notebook outputs cleared before committing
+[ ] Copilot suggestions have been read, understood, and cleaned up
 ```
 
 ---
 
-## Error Handling
+## 20. Tooling
 
-```js
-// Never silently swallow errors
-// Wrong — hides failures and makes debugging impossible
-try {
-  riskyOperation();
-} catch (e) {}
+These tools enforce standards automatically. Configure them once — they are not optional.
 
-// Correct — handle with intention, log context, rethrow or recover explicitly
-try {
-  await riskyOperation();
-} catch (error) {
-  // Log with enough context to reproduce or diagnose the issue
-  logger.error("riskyOperation failed", { reason: error.message });
-  throw new Error(`Operation failed: ${error.message}`);
-}
+| Tool | Purpose |
+|---|---|
+| `ruff` | Linting and formatting — replaces flake8, isort, black |
+| `mypy` | Static type checking |
+| `pytest` + `pytest-cov` | Test runner and coverage |
+| `pre-commit` | Pre-commit hooks: lint, type-check, large-file guard |
+| `pip-audit` | Dependency vulnerability scanning in CI |
+| MLflow or W&B | Experiment tracking |
+| DVC | Data and model versioning |
 
-// Use custom error classes for domain-specific failures
-class ValidationError extends Error {
-  constructor(message, field) {
-    super(message);
-    this.name = "ValidationError"; // Identifies the error type in logs and catch blocks
-    this.field = field;            // Indicates which input field triggered the failure
-  }
-}
+### Minimal `pyproject.toml` Config
 
-class NotFoundError extends Error {
-  constructor(resource, id) {
-    super(`${resource} with id ${id} was not found`);
-    this.name = "NotFoundError";
-    this.statusCode = 404;         // Carries HTTP context so handlers can respond correctly
-  }
-}
+```toml
+[tool.ruff]
+line-length    = 100
+target-version = "py311"
 
-// Validate inputs at the function boundary — fail fast before touching external systems
-function transferFunds(amount, fromAccount, toAccount) {
-  if (amount <= 0) throw new ValidationError("Amount must be positive", "amount");
-  if (!fromAccount) throw new ValidationError("Source account is required", "fromAccount");
-  if (!toAccount) throw new ValidationError("Target account is required", "toAccount");
-  if (fromAccount === toAccount) throw new Error("Source and target accounts must differ");
-  // All inputs confirmed valid — proceed with transfer logic
-}
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "PTH", "RUF"]
 
-// Async error handling — always await inside try/catch, never let promises float unhandled
-async function loadDashboard(userId) {
-  try {
-    const user = await fetchUser(userId);
-    const stats = await fetchUserStats(userId);
-    return buildDashboard(user, stats);
-  } catch (error) {
-    logger.error("Dashboard load failed", { userId, reason: error.message });
-    throw error; // Let the caller decide how to surface this to the user
-  }
-}
+[tool.mypy]
+python_version      = "3.11"
+strict              = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts   = "--cov=src --cov-report=term-missing"
 ```
+
+### Minimal `.pre-commit-config.yaml`
+
+```yaml
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+```
+
+Code that does not pass linting or type checking is not committed. If a rule needs changing, change it through the review process — do not suppress warnings inline without a justification comment.
 
 ---
 
-## Data & State Management
+## 21. Key Principles
 
-```js
-// Immutability — never mutate input arguments
-// Wrong — modifies the original object, causes hidden bugs in callers
-function applyTax(order) {
-  order.total = order.subtotal * 1.2;
-  return order;
-}
-
-// Correct — return a new object, the original stays untouched
-function applyTax(order) {
-  // Compute the tax-inclusive total without modifying the original order
-  return { ...order, total: order.subtotal * 1.2 };
-}
-
-// Avoid global mutable state — it creates invisible coupling between modules
-// Wrong
-let currentUser = null;          // any module can change this at any time
-
-// Correct — pass state explicitly through function arguments or a scoped store
-function renderProfile(user) {   // the dependency is visible and deliberate
-  return buildProfileView(user);
-}
-
-// Constants belong in config, not scattered across files
-// Wrong — magic string buried inside a function
-function canAccessAdminPanel(user) {
-  return user.role === "super_admin";
-}
-
-// Correct — named constant in config, imported where needed
-const ROLES = {
-  ADMIN: "admin",
-  SUPER_ADMIN: "super_admin",
-  VIEWER: "viewer",
-};
-
-function canAccessAdminPanel(user) {
-  // Only super admins can access the admin panel
-  return user.role === ROLES.SUPER_ADMIN;
-}
-```
+| Principle | Rule |
+|---|---|
+| Single Responsibility | One function, one class, one module — one job |
+| DRY | Extract repeated logic into a shared utility. Three occurrences is the refactor threshold. |
+| KISS | The simplest solution that meets requirements is the right one |
+| YAGNI | Do not build for hypothetical future requirements |
+| Fail Fast | Validate at every boundary. Crash loudly on bad input. |
+| Reproducibility | Every result must be traceable to a seed, config, dataset, and Git commit |
+| Explicitness | State every assumption — shapes, units, ranges, and types — never leave them implicit |
+| Testability | If something is hard to test, the design is too tightly coupled — fix the design |
+| Immutability | Do not mutate inputs. Return new objects. Make side effects deliberate and documented. |
+| Explicit Dependencies | Pass config and data through function arguments. Avoid global mutable state. |
+| Measure First | Profile before optimising. Every performance trade-off must be justified by data. |
+| Data Governance | No sensitive data, PII, or credentials in version control — ever |
 
 ---
 
-## Async & Concurrency
-
-```js
-// Always use async/await — avoid raw .then() chains which are harder to follow
-// Wrong — nested .then() chains degrade readability quickly
-fetchUser(id)
-  .then(user => fetchOrders(user.id))
-  .then(orders => processOrders(orders))
-  .catch(err => logger.error("Failed", { err }));
-
-// Correct — sequential, readable, and easy to add step-specific error handling
-async function loadUserOrders(id) {
-  const user = await fetchUser(id);
-  const orders = await fetchOrders(user.id);
-  return processOrders(orders);
-}
-
-// Run independent async operations in parallel — do not serialize what can run concurrently
-// Wrong — user and settings are independent, but this waits for one before starting the other
-const user = await fetchUser(id);
-const settings = await fetchSettings(id);
-
-// Correct — both requests run at the same time
-const [user, settings] = await Promise.all([fetchUser(id), fetchSettings(id)]);
-
-// Handle partial failures in parallel calls explicitly
-const results = await Promise.allSettled([fetchUser(id), fetchSettings(id)]);
-results.forEach(result => {
-  if (result.status === "rejected") {
-    // Log the partial failure but continue — do not let one failure block the rest
-    logger.warn("Parallel fetch partially failed", { reason: result.reason.message });
-  }
-});
-```
-
----
-
-## Types & Validation (TypeScript)
-
-```ts
-// Always type your function signatures — never use implicit any
-// Wrong
-function processOrder(order: any) {}
-
-// Correct — explicit shape defined once, reused everywhere
-interface Order {
-  id: string;
-  userId: string;
-  items: OrderItem[];
-  total: number;
-  status: "pending" | "processing" | "shipped" | "cancelled";
-}
-
-function processOrder(order: Order): ProcessedOrder {}
-
-// Use union types instead of loose strings for controlled values
-type UserRole = "admin" | "editor" | "viewer"; // enforced at compile time, not at runtime
-
-// Use unknown instead of any when type is genuinely uncertain — forces type narrowing
-function parseApiResponse(data: unknown): User {
-  if (!isValidUser(data)) throw new ValidationError("Invalid user shape from API", "response");
-  return data as User;
-}
-
-// Use readonly to signal data that must not be mutated after creation
-interface Config {
-  readonly apiUrl: string;
-  readonly maxConnections: number;
-}
-
-// Avoid type assertions (as SomeType) unless you have confirmed the shape at runtime
-// Writing "as X" tells the compiler to trust you — make sure you are right
-```
-
----
-
-## Testing Standards
-
-```js
-// Every function should have a corresponding test file
-// Test file mirrors the source path:
-//   src/utils/price.js   ->   tests/utils/price.test.js
-
-// Structure: Arrange, Act, Assert (AAA)
-describe("applyDiscount", () => {
-
-  it("reduces the price by the correct discount percentage", () => {
-    // Arrange
-    const basePrice = 100;
-    const discount = 20;
-
-    // Act
-    const result = applyDiscount(basePrice, discount);
-
-    // Assert
-    expect(result).toBe(80);
-  });
-
-  it("throws when discount exceeds 100", () => {
-    // Invalid input must be rejected at the boundary
-    expect(() => applyDiscount(100, 150)).toThrow("Discount must be between 0 and 100");
-  });
-
-  it("returns the original price unchanged when discount is 0", () => {
-    // Zero discount is a valid edge case — price must remain exact
-    expect(applyDiscount(50, 0)).toBe(50);
-  });
-
-  it("handles floating point prices correctly", () => {
-    // Rounding must not introduce cents-level errors
-    expect(applyDiscount(99.99, 10)).toBe(89.99);
-  });
-});
-
-// Testing rules:
-// - Tests must be deterministic — same result every run, no random values, no Date.now() unless mocked
-// - One assertion per test where possible — a failing test should point to exactly one thing
-// - Mock external dependencies (DB, APIs, file system) — unit tests must never hit the network
-// - Test the behavior, not the implementation — tests should not break when you refactor internals
-// - A test that is hard to write is a signal that the code being tested is too tightly coupled
-```
-
----
-
-## Security Baseline
-
-```js
-// Never trust user input — validate and sanitize everything at the boundary
-function searchUsers(query) {
-  // Reject empty or excessively long queries before they reach the database
-  if (!query || query.length > 100) throw new ValidationError("Invalid search query", "query");
-
-  // Use parameterized queries — never concatenate user input into SQL strings
-  return db.query("SELECT * FROM users WHERE name ILIKE $1", [`%${query}%`]);
-}
-
-// Never expose internal error details to the client
-// Wrong — leaks stack traces and implementation details
-app.use((error, req, res, next) => {
-  res.status(500).json({ error: error.stack });
-});
-
-// Correct — log internally, send a safe message externally
-app.use((error, req, res, next) => {
-  logger.error("Unhandled error", { path: req.path, reason: error.message });
-  res.status(500).json({ error: "An unexpected error occurred" });
-});
-
-// Environment secrets must never appear in source code or logs
-// Wrong
-const token = "sk-prod-abc123xyz";    // committed to Git, exposed forever
-
-// Correct
-const token = process.env.API_SECRET_KEY; // loaded from environment at runtime
-
-// Sanitize output when rendering user-supplied content to prevent injection attacks
-// Use your framework's built-in escaping — never build HTML strings manually from user data
-```
-
----
-
-## Configuration & Environment
-
-```js
-// All environment-specific values go in .env — never hardcode them in source
-// Wrong
-const DB = "postgres://prod-server/real_database";   // exposed, fragile, environment-locked
-
-// Always provide a documented .env.example for onboarding
-// .env.example
-DATABASE_URL=postgres://localhost:5432/your_db_name
-API_SECRET_KEY=replace-with-your-secret
-PORT=3000
-MAX_CONNECTIONS=10
-
-// Load and validate all config in one central location — fail fast on startup if anything is missing
-const config = {
-  db: {
-    url: process.env.DATABASE_URL,
-    maxConnections: parseInt(process.env.MAX_CONNECTIONS, 10) || 10,
-  },
-  api: {
-    secretKey: process.env.API_SECRET_KEY,
-    port: parseInt(process.env.PORT, 10) || 3000,
-  },
-};
-
-// Crash immediately at startup if critical config is absent — better than a silent runtime failure
-if (!config.db.url) throw new Error("DATABASE_URL is required but not defined in environment");
-if (!config.api.secretKey) throw new Error("API_SECRET_KEY is required but not defined in environment");
-
-module.exports = config;
-```
-
----
-
-## Code Review Checklist
-
-Before marking code as ready for review, verify every item below:
-
-```
-  The code runs without errors locally
-  All existing tests pass
-  New logic has test coverage
-  Functions are short, clearly named, and do one thing
-  No hardcoded secrets, URLs, or magic numbers
-  Comments explain WHY, not WHAT
-  No console.log or debug artifacts remain in the code
-  No separator lines or print-style debug patterns anywhere
-  Environment variables are documented in .env.example
-  No dead code or commented-out blocks left behind
-  Copilot suggestions have been read, understood, and cleaned up
-  The code follows every rule in this document
-```
-
----
-
-## What to Always Avoid
-
-```js
-// Magic numbers — every unexplained number must become a named constant
-setTimeout(fn, 86400000);                        // wrong — what is this number?
-const ONE_DAY_IN_MS = 24 * 60 * 60 * 1000;      // named and self-documenting
-setTimeout(fn, ONE_DAY_IN_MS);                   // correct
-
-// These patterns are never acceptable:
-console.log("=".repeat(60));          // separator — wrong
-console.log("--- debug ---");         // separator — wrong
-console.log("step 1");                // execution tracing — wrong
-console.log(someObject);             // raw object dump — wrong
-
-// Other things to avoid:
-// Deep nesting beyond 2-3 levels — flatten with early returns or extracted functions
-// God functions that scroll for pages — break them apart
-// Duplicate logic — extract to a shared utility (DRY: Don't Repeat Yourself)
-// Global state mutation — keep state changes local and explicit
-// Overloaded functions — a function that behaves differently based on argument type is two functions
-// Ignoring linter or type errors — warnings today become runtime bugs tomorrow
-// Floating promises — every async call must be awaited or explicitly fire-and-forget with a comment
-// any type in TypeScript without a justification comment — it defeats the purpose of typing
-// Commented-out dead code — delete it, Git history preserves it
-// Excessive logging — if you are logging more than 2-3 times in a function, reconsider
-```
-
----
-
-## Key Principles Reference
-
-| Principle             | Rule                                                                 |
-|-----------------------|----------------------------------------------------------------------|
-| Single Responsibility | One function does one thing                                          |
-| DRY                   | Extract repeated logic into shared utilities                         |
-| KISS                  | The simplest solution that works is the right one                    |
-| Fail Fast             | Validate at the boundary, crash loudly, recover intentionally        |
-| Explainability        | Any engineer should understand the code within minutes               |
-| Testability           | If it is hard to test, it is too tightly coupled                     |
-| Immutability          | Do not mutate inputs — return new values                             |
-| Explicit Dependencies | Never rely on hidden global state — pass what you need               |
-| Least Privilege       | Only access and expose what is strictly necessary                    |
-| Consistency           | Follow the same patterns throughout the entire codebase              |
-
----
-
-*This document is a living standard. Update it when new patterns are adopted or old ones are retired.*
+*This document is a living standard. When a new pattern is adopted or an old one retired, update this file in the same PR that introduces the change.*

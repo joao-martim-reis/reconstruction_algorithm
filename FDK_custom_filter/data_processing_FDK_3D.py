@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector, Button
 import re
 
-def load_images(tiff_folder, projection_fraction=1.0):
+def load_images(tiff_folder):
     print(f"--> Loading images from: {tiff_folder}")
     
     if not os.path.exists(tiff_folder): #os.path.exists checks if a path exists
@@ -21,16 +21,6 @@ def load_images(tiff_folder, projection_fraction=1.0):
     # Accept common TIFF extensions ('.tif' and '.tiff') in a case-insensitive way
     file_list = [f for f in os.listdir(tiff_folder) if f.lower().endswith(('.tif', '.tiff'))] #os.listdir lists files in a directory
     file_list.sort(key=extract_number)
-    if projection_fraction <= 0 or projection_fraction > 1:
-        raise ValueError(f"projection_fraction must be in (0, 1], got {projection_fraction}")
-
-    original_count = len(file_list)
-    selected_count = max(1, int(np.floor(original_count * projection_fraction)))
-    file_list = file_list[:selected_count]
-
-    if projection_fraction < 1.0:
-        print(f"Using first {projection_fraction*100:.1f}% of projections: {selected_count}/{original_count}")
-
     num_files = len(file_list)
     print(f"Number of files found: {num_files}") 
 
@@ -57,14 +47,14 @@ def load_images(tiff_folder, projection_fraction=1.0):
 
 def generate_collapsed_sinogram(projections):
     print("--> Creating collapsed sinogram (sum projection)...")
-    sino_sum = np.sum(projections, axis=0)
+    sino_sum = np.sum(projections, axis=0) #axis = 0, means we are summing along the first dimension (height), resulting in a 2D array of shape (width, num_projections) which is the collapsed sinogram.
     return sino_sum
 
 
-def selecionar_roi_I0(sino_raw, angle_span_deg=360): 
+def selecionar_roi_I0(sino_raw): 
     """
-    Interface simplificada para selecionar apenas a ROI de background (I0) para normalização.
-    O shift é obtido da calibração prévia.
+    Simplified interface to select only the background ROI (I0) for normalization.
+    The shift is obtained from prior calibration.
     """
     print("--> Select I0 ROI for normalization...")
     
@@ -77,10 +67,10 @@ def selecionar_roi_I0(sino_raw, angle_span_deg=360):
     ax.set_ylabel("Detector (px)")
     ax.set_xlabel("θ (degree)")
 
-    # Set x-axis ticks every 30 degrees for the configured angular span
+    # Set x-axis ticks every 30 degrees
     n_proj = sino_raw.shape[1]
-    ticks_deg = np.arange(0, int(np.ceil(angle_span_deg)) + 1, 30)
-    tick_positions = [int(d * n_proj / float(angle_span_deg)) for d in ticks_deg]
+    ticks_deg = np.arange(0, 361, 30)
+    tick_positions = [int(d * n_proj / 360.0) for d in ticks_deg]
     tick_labels = [f"{int(d)}°" for d in ticks_deg]
     ax.set_xticks(tick_positions)
     ax.set_xticklabels(tick_labels)

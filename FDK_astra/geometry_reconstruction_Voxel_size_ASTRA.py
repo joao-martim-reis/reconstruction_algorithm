@@ -1,42 +1,17 @@
 import numpy as np
+from types import SimpleNamespace
 
 """
     geometry_reconstruction_Voxel_size_ASTRA.py
     ============================================
     ASTRA-specific version of geometry_reconstruction_Voxel_size.py.
-    
-    Identical logic and field names — but uses a plain CTGeometry class
+
+    Identical logic and field names — but uses a plain namespace object
     instead of tigre.geometry(), so TIGRE is NOT required.
-    
+
     The original geometry_reconstruction_Voxel_size.py is kept intact for
     TIGRE-based scripts.
 """
-
-
-class CTGeometry:
-    """
-    Plain Python replacement for tigre.geometry(mode='cone').
-    Has identical attributes so all downstream ASTRA scripts work unchanged.
-    """
-    def __init__(self):
-        self.nDetector   = None   # [rows, cols]
-        self.dDetector   = None   # [row_pitch, col_pitch] mm
-        self.sDetector   = None   # [height, width] mm
-        self.offDetector = None   # [vertical, horizontal] mm
-        self.nVoxel      = None   # [nZ, nY, nX]
-        self.dVoxel      = None   # [dZ, dY, dX] mm
-        self.sVoxel      = None   # [sZ, sY, sX] mm
-        self.offOrigin   = None   # [Z, Y, X] mm
-        self.DSD         = None   # source → detector mm
-        self.DSO         = None   # source → object mm
-        self.rotDetector = None   # [rx, ry, rz] rad
-
-    def __repr__(self):
-        lines = ["CTGeometry("]
-        for k, v in self.__dict__.items():
-            lines.append(f"  {k} = {v}")
-        lines.append(")")
-        return "\n".join(lines)
 
 
 def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle,
@@ -56,7 +31,7 @@ def setup_geometry(img_shape, voxel_size, DSD, DSO, shift_pixels, total_angle,
 
     height, width, n_angles = img_shape
 
-    geo = CTGeometry()
+    geo = SimpleNamespace()
 
     # ── Detector ─────────────────────────────────────────────────────────────
     geo.nDetector  = np.array([height, width])

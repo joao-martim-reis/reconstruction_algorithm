@@ -4,6 +4,32 @@ import tigre.algorithms as algs
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 
+
+def _add_contrast_slider(fig: plt.Figure, images: list) -> Slider:
+    """Attach a contrast slider to a figure containing image axes.
+
+    Args:
+        fig: The matplotlib figure to add the slider to.
+        images: List of (AxesImage, result_dict) tuples where result_dict has
+            an 'image' key containing the numpy array for clim computation.
+
+    Returns:
+        slider: The Slider widget (caller must keep a reference to prevent GC).
+    """
+    plt.subplots_adjust(bottom=0.15)
+    ax_slider = plt.axes([0.2, 0.05, 0.6, 0.03])
+    slider = Slider(ax_slider, 'Contrast', 0.1, 2.0, valinit=1.0, valstep=0.05)
+
+    def update_contrast(val):
+        contrast = slider.val
+        for im, result in images:
+            data = result['image']
+            im.set_clim(np.percentile(data, 1) / contrast, np.percentile(data, 99) * contrast)
+        fig.canvas.draw_idle()
+
+    slider.on_changed(update_contrast)
+    return slider
+
 from geometry_reconstruction import prepare_geometry
 
 from data_processing_2D import (
@@ -116,22 +142,8 @@ def show_shift_comparison(projections, line, mean_I0, config, crop_roi):
     plt.suptitle(f"Shift Comparison - Line {line} - Filter: {config['default_filter']}", 
                  fontsize=14, fontweight='bold', y=0.98)
     
-    # Add slider for contrast control
-    plt.subplots_adjust(bottom=0.15)
-    ax_slider = plt.axes([0.2, 0.05, 0.6, 0.03])
-    slider = Slider(ax_slider, 'Contrast', 0.1, 2.0, valinit=1.0, valstep=0.05)
+    slider = _add_contrast_slider(fig, images)
 
-    def update_contrast(val):
-        contrast = slider.val
-        for im, result in images:
-            data = result['image']
-            vmin = np.percentile(data, 1) / contrast
-            vmax = np.percentile(data, 99) * contrast
-            im.set_clim(vmin, vmax)
-        fig.canvas.draw_idle()
-
-    slider.on_changed(update_contrast)
-    
     plt.tight_layout(pad=2)
     plt.show()
 
@@ -164,34 +176,18 @@ def show_filter_comparison(projections, lines, mean_I0, config, crop_roi):
         if n_filters == 1:
             axes = [axes]
         
-        # Store image objects for updating
         images = []
         for ax, result in zip(axes, results):
             ax.set_title(result['label'], fontsize=11, fontweight='bold', pad=8)
             im = ax.imshow(result['image'], cmap='gray', interpolation='bilinear')
             ax.axis('off')
-            images.append(im)
-        
-        plt.suptitle(f"Filter Comparison - Line {line}", 
+            images.append((im, result))
+
+        plt.suptitle(f"Filter Comparison - Line {line}",
                      fontsize=13, fontweight='bold', y=0.98)
-        
-        # Add slider for contrast control
-        plt.subplots_adjust(bottom=0.15)
-        ax_slider = plt.axes([0.2, 0.05, 0.6, 0.03])
-        
-        slider = Slider(ax_slider, 'Contrast', 0.1, 2.0, valinit=1.0, valstep=0.05)
-        
-        def update_contrast(val):
-            contrast = slider.val
-            for im, result in zip(images, results):
-                data = result['image']
-                vmin = np.percentile(data, 1) / contrast
-                vmax = np.percentile(data, 99) * contrast
-                im.set_clim(vmin, vmax)
-            fig.canvas.draw_idle()
-        
-        slider.on_changed(update_contrast)
-        
+
+        slider = _add_contrast_slider(fig, images)
+
         plt.tight_layout(pad=2)
         plt.show()
 

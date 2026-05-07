@@ -13,24 +13,22 @@ Key difference vs TIGRE sinogram axis order:
   TIGRE expects:            (n_angles, n_rows, n_cols)  → transpose (2, 0, 1)
 """
 
-import numpy as np
+import gc
 import os
 import sys
-import gc
+
+import numpy as np
 import napari
 
-# Ensure local modules are found regardless of working directory
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+sys.path.insert(0, os.path.join(_HERE, '..', 'shared'))
 
-# ASTRA-specific helper modules (no TIGRE dependency)
-# Original TIGRE versions are untouched for TIGRE-based scripts
 from geometry_reconstruction_Voxel_size_ASTRA import setup_geometry
-from export_volumes_ASTRA import export_volume_to_nii, export_volume_HU
-
-# Shared modules (identical across all reconstruction scripts)
+from export_volumes import export_volume_to_nii, export_volume_HU
 from crop_projections import select_crop_region, apply_crop_to_projections
-from data_processing_FDK_3D import (load_images, generate_collapsed_sinogram,
-                                     selecionar_roi_I0, get_I0_from_roi)
+from data_processing_fdk import (load_images, generate_collapsed_sinogram,
+                                  selecionar_roi_I0, get_I0_from_roi)
 
 import astra
 
@@ -75,7 +73,7 @@ def print_volume_info(volume, geo=None):
 
 def build_astra_geometry(geo, angles):
     """
-    Convert a CTGeometry object into ASTRA cone_vec format.
+    Convert a geometry namespace into ASTRA cone_vec format.
 
     ASTRA cone_vec — each of the 12 values per projection:
       [srcX, srcY, srcZ]   source position
@@ -109,7 +107,7 @@ def build_astra_geometry(geo, angles):
         # u-axis (horizontal, rotates with gantry)
         ux, uy, uz = ct * du, st * du, 0.0
 
-        # Apply in-plane tilt via Rodrigues rotation if needed
+        # Apply in-plane tilt via rotation if needed
         if abs(tilt) > 1e-12:
             nx, ny, nz   = -st, ct, 0.0
             c, s         = np.cos(tilt), np.sin(tilt)
@@ -147,7 +145,7 @@ def run_astra_fdk(sinogram, proj_geom, vol_geom):
     sinogram shape:  (n_rows, n_angles, n_cols)   ← ASTRA convention
     volume shape:    (nZ, nY, nX)                 ← same as TIGRE convention
     """
-    sino_id = astra.data3d.create('-sino', proj_geom, sinogram) #astra.data3d.create is used to create a 3D data object in the ASTRA Toolbox. The '-sino' argument specifies that the data object being created is a sinogram, which is a common format for storing projection data in computed tomography (CT). The proj_geom argument provides the geometry information for the projections, and the sinogram argument contains the actual projection data that will be used for reconstruction.
+    sino_id = astra.data3d.create('-sino', proj_geom, sinogram) #astra.data3d.create is used to create a 3D data object in the ASTRA Toolbox. The '-sino' argument specifies that the data object being created is a sinogram. The proj_geom argument provides the geometry information for the projections, and the sinogram argument contains the actual projection data that will be used for reconstruction.
     vol_id  = astra.data3d.create('-vol',  vol_geom,  0) #vol_id is created as an empty volume (initialized to zeros) with the specified volume geometry. This volume will be filled with the reconstructed image after running the FDK algorithm. The vol_geom argument defines the size and spatial resolution of the reconstructed volume, while the 0 argument initializes all voxel values to zero before reconstruction.
 
     cfg = astra.astra_dict('FDK_CUDA') #astra.astra_dict is a function in the ASTRA Toolbox that creates a configuration dictionary for a specified reconstruction algorithm. In this case, 'FDK_CUDA' indicates that the configuration being created is for the FDK (Feldkamp-Davis-Kress) algorithm implemented on NVIDIA GPUs using CUDA. The resulting cfg dictionary will contain default parameters for the FDK_CUDA algorithm, which can then be modified as needed before running the reconstruction.

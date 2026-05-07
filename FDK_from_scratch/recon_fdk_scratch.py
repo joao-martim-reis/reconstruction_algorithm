@@ -16,16 +16,23 @@ Steps:
 """
 
 import gc
+import os
+import sys
 import time
 import warnings
+
 import numpy as np
 import napari
 from scipy.ndimage import map_coordinates
 
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+sys.path.insert(0, os.path.join(_HERE, '..', 'shared'))
+
 from geometry_reconstruction_Voxel_size import setup_geometry
 from crop_projections import select_crop_region, apply_crop_to_projections
-from data_processing_FDK_3D import (load_images, generate_collapsed_sinogram,
-                                     selecionar_roi_I0, get_I0_from_roi)
+from data_processing_fdk import (load_images, generate_collapsed_sinogram,
+                                  selecionar_roi_I0, get_I0_from_roi)
 from export_volumes import export_volume_to_nii, export_volume_HU
 
 # ── GPU backend (optional CuPy)
@@ -176,8 +183,7 @@ def backproject(filtered, geo, angles, use_gpu=True):
     volume   = xp.zeros((nZ, nY, nX), dtype=xp.float32)
     z_chunk  = 64 if gpu_mode else 16
 
-    # Optionally transfer the entire filtered sinogram to GPU once to avoid
-    # repeated PCIe transfers inside the angle loop.
+    # Optionally transfer the entire filtered sinogram to GPU
     if gpu_mode:
         filtered_gpu = cp.asarray(filtered, dtype=cp.float32)
 

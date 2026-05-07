@@ -2,70 +2,96 @@
 
 ## Overview
 
-This script performs systematic calibration to determine the **detector center misalignment** in cone-beam CT systems. It quantifies the pixel offset between the rotation axis center and the detector center, which is critical for accurate image reconstruction.
-"""
-Calibration Module — Overview
+This folder provides a modular workflow to estimate detector center misalignment
+in cone-beam CT. The output is a detector shift in pixels, suitable for use in
+reconstruction setup.
 
-This folder contains a modular CT detector-center calibration workflow. The goal
-is to compute the pixel offset between the rotation axis and the detector
-geometric center using collapsed sinograms from projection stacks.
-"""
+## Pipeline Summary
 
-## Purpose
-- Measure detector/rotation-center misalignment across multiple phantom
-  positions and export results for further analysis.
+1. Load projection TIFF files from a target folder.
+2. Build a collapsed sinogram.
+3. Select background ROI and object ROI interactively.
+4. Segment the object and estimate detector shift.
+5. Save JSON and CSV outputs with summary statistics.
 
-## Files and responsibilities
-- `calibration_process.py`: orchestrator that runs the full calibration flow.
-- `calibration_io.py`: image I/O and collapsed sinogram generation.
-- `calibration_roi.py`: interactive ROI selection (background + object).
-- `calibration_segmentation.py`: segmentation, component selection and shift computation.
-- `calibration_visualization.py`: plotting of sinogram, mask and final result.
-- `calibration_reporting.py`: save JSON/CSV, compute statistics and summary plotting.
+## Files and Responsibilities
+
+- `calibration_main.py`: orchestrator for full calibration workflow.
+- `calibration_images_sinogram.py`: TIFF loading and collapsed sinogram creation.
+- `calibration_roi.py`: interactive ROI selection and operation mode.
+- `calibration_segmentation.py`: segmentation and shift estimation.
+- `calibration_visualization.py`: per-run visualization.
+- `calibration_reporting.py`: statistics, exports, and final report.
 
 ## Dependencies
-- numpy, tifffile, matplotlib, scipy
 
-Install with:
+- numpy
+- tifffile
+- matplotlib
+- scipy
 
-```bash
-pip install numpy tifffile matplotlib scipy
+## Supported Input Layouts
+
+### Layout A: Multi-distance mode
+
+`parent_folder` contains one or more numeric subfolders where each subfolder
+name is a distance in cm (for example `-5`, `0`, `12.5`).
+
+Example:
+
+```
+parent_folder/
+  -5/
+    0001.tif
+    ...
+  0/
+    0001.tif
+    ...
+  10/
+    0001.tif
+    ...
 ```
 
-## Quick usage
+Behavior:
 
-Run the orchestrator (from the workspace root or the `Calibration` folder):
+- Numeric subfolders are parsed and processed in ascending distance order.
+- If TIFF files also exist directly in `parent_folder`, they are ignored.
+
+### Layout B: Single-folder mode
+
+When no numeric distance subfolders are available, the workflow can process a
+single position in either form:
+
+1. `parent_folder` contains exactly one subfolder with TIFFs, regardless of the
+   subfolder name.
+2. `parent_folder` contains TIFFs directly.
+
+In single-folder mode, distance is recorded as `0.0 cm` in outputs and the
+summary distance-vs-shift plot is skipped.
+
+## Usage
+
+Edit the `parent_folder` path in `calibration_main.py`, then run:
 
 ```bash
-python Calibration\calibration_process.py
+python Calibration\calibration_main.py
 ```
 
-The script expects a `parent_folder` containing subfolders named by distance
-(e.g. `10`, `20` or `0.45`). For each folder it will:
-1. Load TIFF projections
-2. Create a collapsed sinogram
-3. Ask the user to draw background and object ROIs
-4. Compute the detector shift and show results
-5. Save JSON/CSV summary and a plot
+## Output Files
+
+For each run, files are written to `parent_folder`:
+
+- `calibration_results_YYYYMMDD_HHMMSS.json`
+- `calibration_results_YYYYMMDD_HHMMSS.csv`
+
+The JSON includes calibration mode metadata and summary statistics.
 
 ## Notes
-- ROI selection uses Matplotlib interactive widgets — run locally or with an
-  X server. For headless runs, consider adding a non-interactive ROI mode.
-- I can add CLI flags to pass `parent_folder` and to skip GUI steps.
 
-## Suggested next steps
-- Add CLI argument parsing for `parent_folder` and non-interactive mode.
-- Add unit tests for `calibration_segmentation.py` using synthetic sinograms.
-- Replace prints with structured logging.
-   - Area containing the **phantom sinogram signature**
-
-   - Guides the segmentation algorithm to focus on the correct region
-
-
-
-**Why two ROIs?**
-
-- Background ROI → Calculates **threshold** for segmentation
-
-- Object ROI → Acts as a **spatial hint** to avoid detecting wrong features
+- ROI selection is interactive (Matplotlib widgets), so run with a display.
+- Projection ordering depends on numeric tokens in TIFF filenames.
+- Reliability mode is fail-fast: invalid TIFF shape, empty TIFF sets, NaN/Inf values,
+  or ambiguous segmentation now raise explicit errors instead of silent fallbacks.
+- Segmentation requires a valid object component overlapping the selected object ROI;
+  if no valid overlap is found, calibration for that folder is skipped with an error.
 

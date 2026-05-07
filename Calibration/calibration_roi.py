@@ -2,13 +2,34 @@
 ROI selection tools for calibration.
 """
 
+import logging
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector, Button, RadioButtons
 
 
-def selecionar_roi_interativamente(sino_raw):
-    print("--> ROI selection and operation mode...")
+logger = logging.getLogger(__name__)
+
+_ANGLE_TICK_STEP_DEG = 30
+
+
+def selecionar_roi_interativamente(sino_raw: np.ndarray) -> tuple[tuple, tuple, bool]:
+    """Interactively select background and object ROIs on a collapsed sinogram.
+
+    Displays a matplotlib window where the user draws two rectangular ROIs:
+    first the background (green), then the object (orange). A radio button
+    allows the user to skip shift calculation if the detector is already centred.
+
+    Args:
+        sino_raw: Collapsed sinogram, shape (n_detector_px, n_angles).
+
+    Returns:
+        Tuple of (roi_background, roi_object, calculate_shift), where each ROI is
+        (det_start, det_end, ang_start, ang_end) and calculate_shift is True when
+        shift computation was requested.
+    """
+    logger.info("ROI selection and operation mode")
 
     roi_background = [None]
     roi_object = [None]
@@ -28,7 +49,7 @@ def selecionar_roi_interativamente(sino_raw):
 
     # Set x-axis ticks every 30 degrees
     n_proj = sino_raw.shape[1]
-    ticks_deg = np.arange(0, 361, 30)
+    ticks_deg = np.arange(0, 361, _ANGLE_TICK_STEP_DEG)
     tick_positions = [int(d * n_proj / 360.0) for d in ticks_deg]
     tick_labels = [f"{int(d)}°" for d in ticks_deg]
     ax.set_xticks(tick_positions)
@@ -49,7 +70,13 @@ def selecionar_roi_interativamente(sino_raw):
 
         if current_mode[0] == "background":
             roi_background[0] = roi_coords
-            print(f"Background ROI: Det[{det_start}:{det_end}], Ang[{ang_start}:{ang_end}]")
+            logger.info(
+                "Background ROI selected: Det[%d:%d], Ang[%d:%d]",
+                det_start,
+                det_end,
+                ang_start,
+                ang_end,
+            )
             if rect_bg:
                 rect_bg.remove()
             rect_bg = plt.Rectangle(
@@ -66,7 +93,13 @@ def selecionar_roi_interativamente(sino_raw):
             ax.set_title("STEP 2: Draw Object ROI (orange) | STEP 3: Confirm", fontsize=11)
         else:
             roi_object[0] = roi_coords
-            print(f"Object ROI: Det[{det_start}:{det_end}], Ang[{ang_start}:{ang_end}]")
+            logger.info(
+                "Object ROI selected: Det[%d:%d], Ang[%d:%d]",
+                det_start,
+                det_end,
+                ang_start,
+                ang_end,
+            )
             if rect_obj:
                 rect_obj.remove()
             rect_obj = plt.Rectangle(
@@ -100,7 +133,7 @@ def selecionar_roi_interativamente(sino_raw):
 
     def change_mode(label):
         calculate_options[0] = label == "Calculate Shift"
-        print(f"Mode changed to: {label}")
+        logger.info("Mode changed to: %s", label)
 
     radio.on_clicked(change_mode)
 
@@ -115,11 +148,11 @@ def selecionar_roi_interativamente(sino_raw):
 
     # Fallbacks
     if roi_background[0] is None:
-        print("Warning: No Background ROI. Using top-left corner.")
+        logger.warning("No background ROI selected. Using top-left fallback ROI")
         roi_background[0] = (0, 50, 0, 50)
 
     if roi_object[0] is None:
-        print("Warning: No Object ROI. Using full image.")
+        logger.warning("No object ROI selected. Using full-image fallback ROI")
         height, width = sino_raw.shape
         roi_object[0] = (0, height, 0, width)
 

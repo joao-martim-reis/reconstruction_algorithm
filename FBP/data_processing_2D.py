@@ -8,7 +8,10 @@ import re
 def load_images(tiff_folder):
     print(f"Loading images from folder: {tiff_folder}")
 
-    file_list = [f for f in os.listdir(tiff_folder) if f.lower().endswith('.tif')]
+    if not os.path.isdir(tiff_folder):
+        raise FileNotFoundError(f"Projection folder not found: {tiff_folder!r}")
+
+    file_list = [f for f in os.listdir(tiff_folder) if f.lower().endswith(('.tif', '.tiff'))]
     
     def extract_number(filename): # Extract numeric part for sorting to overcome some ordering issues 
         match = re.search(r'\d+', filename)
@@ -39,7 +42,8 @@ def extract_sinogram_raw(projections_stack, linha_escolhida):
     """
     Extract a specific line and stack into a sinogram.
     """
-    sino_raw = projections_stack[linha_escolhida,:,:].astype(np.float32).T[:, ::-1] #[linha_escolhida,:,:] selects a single height line across all angles and detector widths
+    # .T: (W, A) → (A, W); [:, ::-1]: flip detector axis to match TIGRE convention
+    sino_raw = projections_stack[linha_escolhida, :, :].astype(np.float32).T[:, ::-1]
     return sino_raw
 
 def selecionar_roi_I0(sino_raw): 
@@ -153,7 +157,7 @@ def normalize_sinogram(sinogram_raw, I0_val=None):
 
 def show_results(sino_raw, sino_final_norm, shift_val, linha_escolhida):
     """
-    Visualization: sinogramas before and after normalization and shift correction.
+    Visualization: sinograms before and after normalization and shift correction.
     """
     print("--> Showing final result...")
 
